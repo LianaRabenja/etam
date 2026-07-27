@@ -1,4 +1,5 @@
 using ETAM.Application;
+using ETAM.Application.Interfaces;
 using ETAM.Infrastructure;
 using ETAM.Infrastructure.Identity;
 using ETAM.Infrastructure.Persistence;
@@ -149,6 +150,24 @@ app.UseAuthorization();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+
+// ---------- Tâche planifiée : recalcul des alertes ----------
+// Sans cela, les alertes (seuils 50 %, travaux non justifiés) ne se mettraient à jour
+// qu'au moment d'une saisie. Ici, elles sont réévaluées toutes les heures.
+if (!string.IsNullOrWhiteSpace(hangfireConn))
+{
+    try
+    {
+        RecurringJob.AddOrUpdate<IAlerteService>(
+            "evaluation-alertes",
+            svc => svc.EvaluerAlertesAsync(CancellationToken.None),
+            Cron.Hourly);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Impossible de planifier l'évaluation des alertes.");
+    }
+}
 
 // ---------- Migration + Seed au démarrage ----------
 using (var scope = app.Services.CreateScope())
