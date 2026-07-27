@@ -48,7 +48,59 @@ public class PrevisionController : Controller
             .OrderByDescending(b => b.Annee).FirstOrDefault();
         ViewBag.BudgetCompteRestant = budget?.MontantRestant ?? 0m;
         ViewBag.BudgetMaterielRestant = prevision.Chantier?.BudgetMaterielRestant ?? 0m;
+
+        await ChargerResteApresLigneAsync(prevision, ct);
         return View(prevision);
+    }
+
+    /// <summary>
+    /// Calcule, pour chaque ligne de la prévision, ce qu'il reste sur son enveloppe
+    /// APRÈS cette ligne — comme un solde de relevé bancaire. Le cumul est chronologique
+    /// et tient compte de toutes les prévisions engagées sur le même poste, pas seulement
+    /// de celle-ci. Résultat exposé dans ViewBag.ResteApres (clé = identifiant de ligne).
+    /// </summary>
+    private async Task ChargerResteApresLigneAsync(PrevisionJournaliere prevision, CancellationToken ct)
+    {
+        var posteIds = prevision.Lignes
+            .Where(l => l.PrevisionGlobaleLigneId != null)
+            .Select(l => l.PrevisionGlobaleLigneId!.Value)
+            .Distinct().ToList();
+
+        var resteApres = new Dictionary<long, decimal>();
+        if (posteIds.Count == 0) { ViewBag.ResteApres = resteApres; return; }
+
+        // Lignes engagées sur ces postes + celles de la prévision courante (même si elle
+        // n'est pas encore validée : on affiche alors une projection).
+        var engagees = await _uow.PrevisionLignes.Query().AsNoTracking()
+            .Include(l => l.PrevisionJournaliere)
+            .Include(l => l.PrevisionGlobaleLigne)
+            .Where(l => l.PrevisionGlobaleLigneId != null
+                     && posteIds.Contains(l.PrevisionGlobaleLigneId.Value)
+                     && (l.PrevisionJournaliereId == prevision.Id
+                      || l.PrevisionJournaliere.Statut == StatutPrevision.ValideeAdministrateur
+                      || l.PrevisionJournaliere.Statut == StatutPrevision.Executee
+                      || l.PrevisionJournaliere.Statut == StatutPrevision.RapportSoumis
+                      || l.PrevisionJournaliere.Statut == StatutPrevision.Cloturee))
+            .ToListAsync(ct);
+
+        foreach (var groupe in engagees.GroupBy(l => l.PrevisionGlobaleLigneId!.Value))
+        {
+            var poste = groupe.First().PrevisionGlobaleLigne;
+            if (poste is null) continue;
+
+            var enveloppe = poste.Quantite * poste.PrixUnitaire;
+            decimal cumul = 0m;
+
+            foreach (var ligne in groupe
+                .OrderBy(l => l.PrevisionJournaliere.DatePrevision)
+                .ThenBy(l => l.Id))
+            {
+                cumul += ligne.Quantite * ligne.PrixUnitaireEstime;
+                resteApres[ligne.Id] = enveloppe - cumul;
+            }
+        }
+
+        ViewBag.ResteApres = resteApres;
     }
 
     // Seuls l'Administrateur et le Correspondant créent une prévision (GET et POST alignés).
@@ -221,18 +273,26 @@ public class PrevisionController : Controller
     public async Task<IActionResult> ExportDetail(long id, string format, CancellationToken ct)
     {
         var p = await _uow.Previsions.Query().AsNoTracking()
-            .Include(x => x.Chantier).Include(x => x.Lignes)
+            .Include(x => x.Chantier)
+            .Include(x => x.Lignes).ThenInclude(l => l.PrevisionGlobaleLigne)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
         if (p is null) return NotFound();
+
+        // Même calcul que la page de détail, pour que l'export porte la même traçabilité.
+        await ChargerResteApresLigneAsync(p, ct);
+        var reste = ViewBag.ResteApres as Dictionary<long, decimal> ?? new Dictionary<long, decimal>();
 
         var cols = new List<ColonneExport<PrevisionLigne>>
         {
             new("Désignation", l => l.Designation),
-            new("Catégorie",   l => l.Categorie),
+            new("Poste prévu", l => l.PrevisionGlobaleLigne is null
+                ? "Non rattaché"
+                : $"{l.PrevisionGlobaleLigne.Rubrique} / {l.PrevisionGlobaleLigne.Designation}"),
             new("Budget",      l => l.TypeBudget.ToString()),
             new("Quantité",    l => l.Quantite.ToString("N2"), true),
             new("Prix unit.",  l => l.PrixUnitaireEstime.ToString("N0"), true),
-            new("Total",       l => (l.Quantite * l.PrixUnitaireEstime).ToString("N0"), true)
+            new("Total",       l => (l.Quantite * l.PrixUnitaireEstime).ToString("N0"), true),
+            new("Reste enveloppe", l => reste.TryGetValue(l.Id, out var r) ? r.ToString("N0") : "", true)
         };
 
         var nom = $"Prevision_{p.Reference}".Replace(' ', '_');

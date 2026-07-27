@@ -8,6 +8,13 @@
     decimal bmRestant = ViewBag.BudgetMaterielRestant ?? 0m;
     var depasseCompte = totalCompte > bcRestant;
     var depasseMateriel = totalMateriel > bmRestant;
+    var resteApres = ViewBag.ResteApres as Dictionary<long, decimal> ?? new Dictionary<long, decimal>();
+    // Tant que la prévision n'est pas validée par l'Administrateur, le reste affiché
+    // est une projection : ces montants ne sont pas encore engagés.
+    var estProjection = Model.Statut != StatutPrevision.ValideeAdministrateur
+                     && Model.Statut != StatutPrevision.Executee
+                     && Model.Statut != StatutPrevision.RapportSoumis
+                     && Model.Statut != StatutPrevision.Cloturee;
 }
 <div class="row g-4">
     <div class="col-lg-8">
@@ -25,7 +32,7 @@
             </div>
             <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>
             <table class="table table-sm align-middle">
-                <thead><tr><th>Désignation</th><th>Poste prévu</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th></tr></thead>
+                <thead><tr><th>Désignation</th><th>Poste prévu</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th><th class="text-end">Reste sur l'enveloppe</th></tr></thead>
                 <tbody>
                 @foreach (var l in Model.Lignes)
                 {
@@ -49,11 +56,46 @@
                         <td class="text-end">@l.Quantite.ToString("N2")</td>
                         <td class="text-end">@l.PrixUnitaireEstime.ToString("N0")</td>
                         <td class="text-end fw-semibold">@l.Total.ToString("N0")</td>
+                        <td class="text-end">
+                            @if (l.PrevisionGlobaleLigne is null)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else if (resteApres.TryGetValue(l.Id, out var reste))
+                            {
+                                var env = l.PrevisionGlobaleLigne.Quantite * l.PrevisionGlobaleLigne.PrixUnitaire;
+                                var pct = env <= 0 ? 0 : (double)((env - reste) / env) * 100d;
+                                <span class="fw-semibold @(reste < 0 ? "text-danger" : pct >= 50 ? "text-warning" : "text-success")">
+                                    @reste.ToString("N0")
+                                </span>
+                                <div class="small text-muted">@pct.ToString("N0") % consommé</div>
+                                @if (reste < 0)
+                                {
+                                    <div class="small text-danger">enveloppe dépassée</div>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>
-                <tfoot><tr><th colspan="5" class="text-end">Total</th><th class="text-end">@Model.Total.ToString("N0") Ar</th></tr></tfoot>
+                <tfoot><tr><th colspan="5" class="text-end">Total</th><th class="text-end">@Model.Total.ToString("N0") Ar</th><th></th></tr></tfoot>
             </table>
+            @if (resteApres.Any())
+            {
+                <p class="small text-muted mb-1">
+                    <i class="fa-solid fa-circle-info me-1"></i>
+                    « Reste sur l'enveloppe » = ce qu'il reste sur le poste prévu après cette ligne,
+                    en tenant compte de toutes les prévisions déjà engagées sur ce poste.
+                    @if (estProjection)
+                    {
+                        <strong class="text-warning">Projection : cette prévision n'est pas encore validée.</strong>
+                    }
+                </p>
+            }
             @if (!string.IsNullOrEmpty(Model.Observation)) { <p class="small text-muted mb-0">@Model.Observation</p> }
             @if (!string.IsNullOrEmpty(Model.MotifRefus)) { <p class="small text-danger mb-0">Motif de refus : @Model.MotifRefus</p> }
         </div>
