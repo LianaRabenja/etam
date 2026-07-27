@@ -1,0 +1,241 @@
+@model ETAM.Web.Models.ChantierDetailsViewModel
+@using ETAM.Domain.Enums
+@{
+    ViewData["Title"] = $"Chantier {Model.Chantier.Nom}";
+    var c = Model.Chantier;
+    var compte = Model.CompteBancaire;
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h4 class="fw-bold mb-1">@c.Nom <span class="text-muted fs-6">(@c.Code)</span></h4>
+        <span class="text-muted"><i class="fa-solid fa-location-dot me-1"></i>@c.Localisation · Responsable : @c.Responsable · @c.Statut</span>
+    </div>
+    <div class="text-nowrap">
+        @if (compte is not null && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+        {
+            <a asp-controller="Banques" asp-action="Transferer" asp-route-chantierId="@c.Id" class="btn btn-success">
+                <i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Transfert → Budget Matériel
+            </a>
+        }
+        @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant"))
+        {
+            <a asp-action="Edit" asp-route-id="@c.Id" class="btn btn-light"><i class="fa-solid fa-pen"></i></a>
+        }
+        <a asp-action="Index" class="btn btn-light">Retour</a>
+    </div>
+</div>
+
+<!-- KPI -->
+<div class="kpi-grid mb-4">
+    <div class="kpi"><div class="kpi-icon bg-blue"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <div class="kpi-label">Budget Matériel (plafond)</div>
+        <div class="kpi-value">@c.BudgetMateriel.ToString("N0") Ar</div>
+        <div class="kpi-sub">Réserve : @c.ReserveRestante.ToString("N0") Ar</div></div>
+    <div class="kpi"><div class="kpi-icon bg-violet"><i class="fa-solid fa-arrow-right-arrow-left"></i></div>
+        <div class="kpi-label">Transféré (budget réel)</div>
+        <div class="kpi-value">@c.MaterielTransfere.ToString("N0") Ar</div></div>
+    <div class="kpi"><div class="kpi-icon bg-red"><i class="fa-solid fa-fire"></i></div>
+        <div class="kpi-label">Consommé</div>
+        <div class="kpi-value">@c.Consommation.ToString("N0") Ar</div></div>
+    <div class="kpi"><div class="kpi-icon bg-green"><i class="fa-solid fa-piggy-bank"></i></div>
+        <div class="kpi-label">Réel disponible</div>
+        <div class="kpi-value">@c.MaterielDisponible.ToString("N0") Ar</div></div>
+    <div class="kpi"><div class="kpi-icon bg-slate"><i class="fa-solid fa-building-columns"></i></div>
+        <div class="kpi-label">Solde compte bancaire</div>
+        <div class="kpi-value">@((compte?.Solde ?? 0m).ToString("N0")) Ar</div>
+        <div class="kpi-sub">@(compte?.Banque ?? "—")</div></div>
+    <div class="kpi"><div class="kpi-icon bg-amber"><i class="fa-solid fa-gauge-high"></i></div>
+        <div class="kpi-label">Avancement</div>
+        <div class="kpi-value">@c.PourcentageAvancement%</div>
+        <div class="etam-progress mt-1"><span style="width:@c.PourcentageAvancement%"></span></div></div>
+</div>
+
+<!-- Onglets -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-banque">Banque (@Model.Mouvements.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-mat">Matériaux (@Model.Materiaux.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-appro">Approvisionnements (@Model.Approvisionnements.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-prev">Prévisions (@Model.Previsions.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-dep">Dépenses (@Model.Depenses.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-dette">Dettes (@Model.Dettes.Count)</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-alerte">Alertes (@Model.Alertes.Count)</button></li>
+</ul>
+
+<div class="tab-content">
+    <!-- Banque -->
+    <div class="tab-pane fade show active" id="tab-banque">
+        <div class="etam-card p-3">
+            @if (compte is null) { <p class="text-muted mb-0">Aucun compte bancaire rattaché à ce chantier.</p> }
+            else
+            {
+                <p class="mb-2"><strong>@compte.Banque — @compte.Nom</strong> · Solde : <strong>@compte.Solde.ToString("N0") Ar</strong> · N° @compte.Numero</p>
+                <table class="table table-sm table-hover align-middle">
+                    <thead><tr><th>Date</th><th>Type</th><th>Motif</th><th>Statut</th><th class="text-end">Montant</th></tr></thead>
+                    <tbody>
+                    @foreach (var m in Model.Mouvements)
+                    {
+                        var estDepot = m.Type == TypeMouvementBancaire.Depot;
+                        <tr>
+                            <td class="small">@m.Date.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                            <td><span class="badge @(estDepot ? "bg-success" : "bg-danger")">@m.Type</span></td>
+                            <td class="small">@m.Motif</td>
+                            <td>@Html.Raw(m.EstValide ? "<span class='badge bg-success'>Validé</span>" : "<span class='badge bg-warning text-dark'>En attente</span>")</td>
+                            <td class="text-end fw-semibold @(estDepot ? "text-success" : "text-danger")">@(estDepot ? "+" : "-") @m.Montant.ToString("N0")</td>
+                        </tr>
+                    }
+                    @if (!Model.Mouvements.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucun mouvement.</td></tr> }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    <!-- Matériaux -->
+    <div class="tab-pane fade" id="tab-mat">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Désignation</th><th>Catégorie</th><th class="text-end">Stock dispo.</th><th class="text-end">Seuil</th><th class="text-end">Valeur</th><th>État</th></tr></thead>
+                <tbody>
+                @foreach (var m in Model.Materiaux)
+                {
+                    var etat = m.EstStockCritique ? "<span class='badge bg-danger'>Critique</span>"
+                             : m.EstStockFaible ? "<span class='badge bg-warning text-dark'>Faible</span>"
+                             : "<span class='badge bg-success'>OK</span>";
+                    <tr>
+                        <td class="fw-semibold">@m.Designation</td><td class="small text-muted">@m.Categorie</td>
+                        <td class="text-end">@m.StockDisponible.ToString("N2") @m.Unite</td>
+                        <td class="text-end">@m.SeuilMinimal.ToString("N0")</td>
+                        <td class="text-end">@m.ValeurRestante.ToString("N0")</td>
+                        <td>@Html.Raw(etat)</td>
+                    </tr>
+                }
+                @if (!Model.Materiaux.Any()) { <tr><td colspan="6" class="text-muted text-center">Aucun matériau.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Approvisionnements -->
+    <div class="tab-pane fade" id="tab-appro">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Référence</th><th>Date</th><th>Statut</th><th class="text-end">Total</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var a in Model.Approvisionnements)
+                {
+                    <tr>
+                        <td class="fw-semibold">@a.Reference</td>
+                        <td class="small">@a.DateAppro.ToString("dd/MM/yyyy")</td>
+                        <td><span class="badge @(a.Statut == StatutApprovisionnement.Valide ? "bg-success" : "bg-warning text-dark")">@a.Statut</span></td>
+                        <td class="text-end">@a.Total.ToString("N0")</td>
+                        <td class="text-end"><a asp-controller="Approvisionnement" asp-action="Details" asp-route-id="@a.Id" class="btn btn-sm btn-light">Voir</a></td>
+                    </tr>
+                }
+                @if (!Model.Approvisionnements.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucun approvisionnement.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Prévisions -->
+    <div class="tab-pane fade" id="tab-prev">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Référence</th><th>Date</th><th>Statut</th><th class="text-end">Total</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var p in Model.Previsions)
+                {
+                    var badge = p.Statut switch {
+                        StatutPrevision.Executee => "bg-success",
+                        StatutPrevision.Refusee => "bg-danger",
+                        StatutPrevision.Brouillon => "bg-secondary",
+                        _ => "bg-primary" };
+                    <tr>
+                        <td class="fw-semibold">@p.Reference</td>
+                        <td class="small">@p.DatePrevision.ToString("dd/MM/yyyy")</td>
+                        <td><span class="badge @badge">@p.Statut</span></td>
+                        <td class="text-end">@p.Total.ToString("N0")</td>
+                        <td class="text-end"><a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-sm btn-light">Voir</a></td>
+                    </tr>
+                }
+                @if (!Model.Previsions.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucune prévision.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Dépenses -->
+    <div class="tab-pane fade" id="tab-dep">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Date</th><th>Désignation</th><th>Catégorie</th><th>Budget</th><th class="text-end">Montant</th></tr></thead>
+                <tbody>
+                @foreach (var d in Model.Depenses)
+                {
+                    <tr>
+                        <td class="small">@d.Date.ToString("dd/MM/yyyy")</td>
+                        <td class="fw-semibold">@d.Designation</td>
+                        <td class="small text-muted">@d.Categorie</td>
+                        <td><span class="badge @(d.BudgetConcerne == TypeBudget.Compte ? "bg-primary" : "bg-success")">@d.BudgetConcerne</span></td>
+                        <td class="text-end fw-semibold">@d.Montant.ToString("N0")</td>
+                    </tr>
+                }
+                @if (!Model.Depenses.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucune dépense.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Dettes -->
+    <div class="tab-pane fade" id="tab-dette">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Fournisseur</th><th>Libellé</th><th class="text-end">Montant</th><th class="text-end">Restant</th><th>Statut</th></tr></thead>
+                <tbody>
+                @foreach (var d in Model.Dettes)
+                {
+                    var badge = d.Statut switch {
+                        StatutDette.Soldee => "bg-success",
+                        StatutDette.PartiellementPayee => "bg-warning text-dark",
+                        _ => "bg-danger" };
+                    <tr>
+                        <td class="fw-semibold">@d.Fournisseur?.Nom</td>
+                        <td class="small">@d.Libelle</td>
+                        <td class="text-end">@d.MontantInitial.ToString("N0")</td>
+                        <td class="text-end text-danger fw-semibold">@d.SoldeRestant.ToString("N0")</td>
+                        <td><span class="badge @badge">@d.Statut</span></td>
+                    </tr>
+                }
+                @if (!Model.Dettes.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucune dette.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alertes -->
+    <div class="tab-pane fade" id="tab-alerte">
+        <div class="etam-card p-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Niveau</th><th>Titre</th><th>Message</th><th>Date</th></tr></thead>
+                <tbody>
+                @foreach (var a in Model.Alertes)
+                {
+                    var b = a.Niveau switch {
+                        NiveauAlerte.Critique => "bg-danger",
+                        NiveauAlerte.Avertissement => "bg-warning text-dark",
+                        _ => "bg-info text-dark" };
+                    <tr>
+                        <td><span class="badge @b">@a.Niveau</span></td>
+                        <td class="fw-semibold">@a.Titre</td>
+                        <td class="small">@a.Message</td>
+                        <td class="small">@a.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                    </tr>
+                }
+                @if (!Model.Alertes.Any()) { <tr><td colspan="4" class="text-muted text-center">Aucune alerte.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+

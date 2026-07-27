@@ -1,0 +1,98 @@
+@model List<ETAM.Domain.Entities.PrevisionJournaliere>
+@using ETAM.Domain.Enums
+@{
+    ViewData["Title"] = "Rapports de prévision";
+    var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier> ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>();
+    var chantierId = ViewBag.ChantierId as long?;
+    var filtre = ViewBag.Filtre as string;
+    string OngletActif(string f) => filtre == f || (string.IsNullOrEmpty(filtre) && f == "tous") ? "active" : "";
+}
+
+<p class="text-muted">Ce qui a été réalisé avec l'argent de chaque prévision. Une prévision exécutée doit être justifiée par le chef, puis réceptionnée par l'Administrateur.</p>
+
+<!-- Filtres -->
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <ul class="nav nav-pills">
+        <li class="nav-item"><a class="nav-link @OngletActif("tous")" asp-action="Index" asp-route-chantierId="@chantierId">Tous (@ViewBag.NbTotal)</a></li>
+        <li class="nav-item"><a class="nav-link @OngletActif("attente")" asp-action="Index" asp-route-filtre="attente" asp-route-chantierId="@chantierId">À justifier (@ViewBag.NbAttente)</a></li>
+        <li class="nav-item"><a class="nav-link @OngletActif("reception")" asp-action="Index" asp-route-filtre="reception" asp-route-chantierId="@chantierId">À réceptionner (@ViewBag.NbReception)</a></li>
+        <li class="nav-item"><a class="nav-link @OngletActif("clos")" asp-action="Index" asp-route-filtre="clos" asp-route-chantierId="@chantierId">Clôturés (@ViewBag.NbClos)</a></li>
+    </ul>
+    <form method="get" class="ms-auto d-flex gap-2">
+        <input type="hidden" name="filtre" value="@filtre" />
+        <select name="chantierId" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">-- Tous les chantiers --</option>
+            @foreach (var c in chantiers)
+            {
+                <option value="@c.Id" selected="@(chantierId == c.Id)">@c.Nom</option>
+            }
+        </select>
+    </form>
+    <div class="btn-group btn-group-sm" role="group">
+        <a class="btn btn-outline-danger" asp-action="Export" asp-route-format="pdf"
+           asp-route-chantierId="@chantierId" asp-route-filtre="@filtre"><i class="fa-solid fa-file-pdf me-1"></i> PDF</a>
+        <a class="btn btn-outline-success" asp-action="Export" asp-route-format="excel"
+           asp-route-chantierId="@chantierId" asp-route-filtre="@filtre"><i class="fa-solid fa-file-excel me-1"></i> Excel</a>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="etam-card p-4 text-center text-muted">
+        <i class="fa-solid fa-inbox me-2"></i>Aucun rapport de prévision pour ce filtre.
+    </div>
+}
+
+@foreach (var p in Model)
+{
+    var (badge, libelle) = p.Statut switch
+    {
+        StatutPrevision.Executee     => ("bg-warning text-dark", "À justifier"),
+        StatutPrevision.RapportSoumis => ("bg-info text-dark", "À réceptionner"),
+        StatutPrevision.Cloturee     => ("bg-success", "Réceptionné"),
+        _                            => ("bg-secondary", p.Statut.ToString())
+    };
+
+    <div class="etam-card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <span class="badge badge-statut @badge">@libelle</span>
+                <span class="fw-bold ms-1">@p.Reference</span>
+                <div class="small text-muted mt-1">
+                    @p.Chantier?.Nom · Prévision du @p.DatePrevision.ToString("dd/MM/yyyy")
+                    · Montant : <strong>@p.Total.ToString("N0") Ar</strong>
+                </div>
+            </div>
+            <a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-sm btn-primary">
+                <i class="fa-solid fa-eye me-1"></i> Ouvrir
+            </a>
+        </div>
+
+        <hr class="my-2" />
+
+        @if (string.IsNullOrWhiteSpace(p.RapportRealisation))
+        {
+            <div class="small text-danger mb-0">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                Aucun compte rendu : l'argent est sorti mais les travaux ne sont pas encore justifiés.
+            </div>
+        }
+        else
+        {
+            <div class="small text-muted mb-1">Travaux réalisés :</div>
+            <div style="white-space:pre-wrap">@p.RapportRealisation</div>
+            <div class="small text-muted mt-2">
+                Rendu le @p.DateRapport?.ToLocalTime().ToString("dd/MM/yyyy")
+                @if (p.Statut == StatutPrevision.Cloturee)
+                {
+                    <span>· Réceptionné par @p.RapportValideParId le @p.DateValidationRapport?.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(p.MotifRefusRapport))
+        {
+            <div class="alert alert-danger small mt-2 mb-0"><strong>Renvoyé :</strong> @p.MotifRefusRapport</div>
+        }
+    </div>
+}

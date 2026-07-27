@@ -1,0 +1,27 @@
+@model ETAM.Domain.Entities.DetteFournisseur
+@{ ViewData["Title"] = "Payer une dette";
+   var comptes = ViewBag.Comptes as IEnumerable<ETAM.Domain.Entities.CompteBancaire>; }
+<div class="etam-card p-4" style="max-width:600px">
+    <h6 class="fw-bold">@Model.Fournisseur?.Nom — @Model.Libelle</h6>
+    <p class="text-muted mb-3">
+        Chantier : @(Model.Chantier?.Nom ?? "—") ·
+        Restant dû : <strong class="text-danger">@Model.SoldeRestant.ToString("N0") Ar</strong>
+        (sur @Model.MontantInitial.ToString("N0"))
+    </p>
+    <form asp-action="Payer" method="post">
+        <input type="hidden" name="id" value="@Model.Id" />
+        <div class="mb-3"><label class="form-label">Compte à débiter</label>
+            <select name="compteId" class="form-select" required>
+                @foreach (var c in comptes ?? Enumerable.Empty<ETAM.Domain.Entities.CompteBancaire>())
+                { <option value="@c.Id">@c.Banque — @c.Nom (@c.Solde.ToString("N0") Ar)</option> }
+            </select></div>
+        <div class="mb-3"><label class="form-label">Montant à payer (Ar)</label>
+            <input name="montant" type="number" step="0.01" min="0" max="@Model.SoldeRestant" value="@Model.SoldeRestant" class="form-control" required /></div>
+        <div class="form-check mb-3">
+            <input type="checkbox" name="genererDepense" value="true" checked class="form-check-input" id="gd" />
+            <label class="form-check-label" for="gd">Générer la dépense et imputer au Budget Comptes</label>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-money-bill-transfer me-1"></i> Valider le virement</button>
+        <a asp-action="Index" class="btn btn-light">Annuler</a>
+    </form>
+</div>

@@ -1,0 +1,42 @@
+@model List<ETAM.Domain.Entities.PrevisionGlobale>
+@using ETAM.Domain.Enums
+@{ ViewData["Title"] = "Prévisions globales (projet)"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">@Model.Count prévision(s) globale(s) — le budget prévisionnel total d'un chantier, par rubriques.</p>
+    @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier"))
+    {
+        <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouvelle prévision globale</a>
+    }
+</div>
+
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr>
+        <th>Référence</th><th>Chantier</th><th>Date</th><th>Statut</th>
+        <th class="text-end">Total (Ar)</th><th></th>
+    </tr></thead>
+    <tbody>
+    @foreach (var p in Model)
+    {
+        var badge = p.Statut switch {
+            StatutPrevisionGlobale.MiseEnBanque => "bg-success",
+            StatutPrevisionGlobale.ValideeAdministrateur => "bg-primary",
+            StatutPrevisionGlobale.ValideeResponsableFinancier => "bg-info text-dark",
+            StatutPrevisionGlobale.Soumise => "bg-warning text-dark",
+            StatutPrevisionGlobale.Refusee => "bg-danger",
+            _ => "bg-secondary" };
+        <tr>
+            <td class="fw-semibold">@p.Reference</td>
+            <td>@p.Chantier?.Nom</td>
+            <td class="small">@p.DateCreation.ToString("dd/MM/yyyy")</td>
+            <td><span class="badge badge-statut @badge">@p.Statut</span></td>
+            <td class="text-end fw-semibold">@p.Total.ToString("N0")</td>
+            <td class="text-end">
+                <a asp-action="Details" asp-route-id="@p.Id" class="btn btn-sm btn-primary"><i class="fa-solid fa-eye me-1"></i> Détail</a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>

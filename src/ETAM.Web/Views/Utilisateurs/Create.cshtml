@@ -1,0 +1,35 @@
+@model ETAM.Web.Models.CreateUserViewModel
+@{
+    ViewData["Title"] = "Nouvel utilisateur";
+    var roles = ViewBag.Roles as string[] ?? Array.Empty<string>();
+    var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier> ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>();
+}
+<div class="etam-card p-4" style="max-width:560px">
+<form asp-action="Create" method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger small mb-2"></div>
+    <div class="mb-3"><label class="form-label" asp-for="NomComplet"></label>
+        <input asp-for="NomComplet" class="form-control" /><span asp-validation-for="NomComplet" class="text-danger small"></span></div>
+    <div class="mb-3"><label class="form-label" asp-for="Email"></label>
+        <input asp-for="Email" class="form-control" /><span asp-validation-for="Email" class="text-danger small"></span></div>
+    <div class="mb-3"><label class="form-label" asp-for="Fonction"></label>
+        <input asp-for="Fonction" class="form-control" /></div>
+    <div class="mb-3"><label class="form-label" asp-for="Password"></label>
+        <input asp-for="Password" class="form-control" /><span asp-validation-for="Password" class="text-danger small"></span>
+        <small class="text-muted">8 caractères min., avec majuscule, chiffre et caractère spécial.</small></div>
+    <div class="mb-3"><label class="form-label" asp-for="Role"></label>
+        <select asp-for="Role" class="form-select">
+            <option value="">-- choisir un rôle --</option>
+            @foreach (var r in roles) { <option value="@r">@r</option> }
+        </select><span asp-validation-for="Role" class="text-danger small"></span></div>
+    <div class="mb-3"><label class="form-label" asp-for="ChantierId"></label>
+        <select asp-for="ChantierId" class="form-select">
+            <option value="">-- tous les chantiers --</option>
+            @foreach (var c in chantiers) { <option value="@c.Id">@c.Nom (@c.Code)</option> }
+        </select>
+        <span asp-validation-for="ChantierId" class="text-danger small"></span>
+        <small class="text-muted">Obligatoire pour un <strong>Magasinier</strong> : il ne verra que le stock de ce chantier.</small></div>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-plus me-1"></i> Créer</button>
+    <a asp-action="Index" class="btn btn-light">Annuler</a>
+</form>
+</div>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -1,0 +1,127 @@
+@model ETAM.Web.Models.SaisieFicheViewModel
+@{ ViewData["Title"] = "Nouvelles lignes de fiche"; var materiaux = ViewBag.Materiaux as IEnumerable<ETAM.Domain.Entities.Materiau>; }
+
+<div class="etam-card p-4">
+<h5 class="mb-1">Saisir plusieurs lignes sur une fiche</h5>
+<p class="text-muted small mb-4">Choisissez l'article, ajoutez autant de lignes que nécessaire, puis enregistrez. « Solde sur besoin » et « Solde en stock » sont calculés automatiquement.</p>
+
+<form asp-action="NouveauMouvement" method="post">
+    @Html.AntiForgeryToken()
+
+    <div class="mb-3" style="max-width:520px">
+        <label class="form-label">Article (matériau) <span class="text-danger">*</span></label>
+        <select asp-for="MateriauxId" id="selMateriau" class="form-select" required>
+            <option value="">-- choisir un article --</option>
+            @foreach (var m in materiaux ?? Enumerable.Empty<ETAM.Domain.Entities.Materiau>())
+            {
+                <option value="@m.Id"
+                        data-besoin="@m.Besoin.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                        data-stock="@m.StockDisponible.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                    @m.Designation @(string.IsNullOrWhiteSpace(m.Localite) ? "" : "— " + m.Localite) (@m.Unite)
+                </option>
+            }
+        </select>
+        <small class="text-muted">Besoin : <span id="dispBesoin">—</span> · Stock actuel : <span id="dispStock">—</span></small>
+    </div>
+
+    <table class="table table-bordered align-middle text-center small mb-2">
+        <thead class="table-light">
+            <tr>
+                <th style="width:150px">Date</th>
+                <th style="width:110px">Entrée</th>
+                <th style="width:110px">Sortie</th>
+                <th class="text-end" style="width:120px">Solde sur besoin</th>
+                <th class="text-end" style="width:120px">Solde en stock</th>
+                <th>Motif</th>
+                <th style="width:50px"></th>
+            </tr>
+        </thead>
+        <tbody id="lignesBody">
+            @* Ligne modèle initiale (index 0) *@
+            <tr class="ligne">
+                <td><input name="Lignes[0].DateMouvement" type="date" class="form-control form-control-sm" required /></td>
+                <td><input name="Lignes[0].QuantiteEntree" type="number" step="0.001" min="0" value="0" class="form-control form-control-sm text-end col-entree" /></td>
+                <td><input name="Lignes[0].QuantiteSortie" type="number" step="0.001" min="0" value="0" class="form-control form-control-sm text-end col-sortie" /></td>
+                <td class="text-end disp-soldebesoin text-muted">—</td>
+                <td class="text-end disp-soldestock fw-semibold text-primary">—</td>
+                <td><input name="Lignes[0].Motif" class="form-control form-control-sm" placeholder="ex : LINTEAUX, Réception..." /></td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger btn-del" title="Supprimer"><i class="fa-solid fa-trash"></i></button></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <button type="button" id="btnAjouter" class="btn btn-outline-primary btn-sm mb-3"><i class="fa-solid fa-plus me-1"></i> Ajouter une ligne</button>
+
+    <div class="mt-2">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer toutes les lignes</button>
+        <a asp-action="Fiche" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
+
+@section Scripts {
+<script>
+  (function () {
+    var sel = document.getElementById('selMateriau');
+    var body = document.getElementById('lignesBody');
+    var btnAdd = document.getElementById('btnAjouter');
+    var dispBesoin = document.getElementById('dispBesoin');
+    var dispStock = document.getElementById('dispStock');
+
+    function num(v){ v = parseFloat(v); return isNaN(v) ? 0 : v; }
+    function fmt(v){ return Math.round(v).toLocaleString('fr-FR'); }
+
+    function opt(){ return sel.options[sel.selectedIndex]; }
+    function besoin(){ var o = opt(); return o && o.value ? num(o.getAttribute('data-besoin')) : 0; }
+    function stockInit(){ var o = opt(); return o && o.value ? num(o.getAttribute('data-stock')) : 0; }
+
+    // Recalcule tous les soldes en cascade, ligne par ligne.
+    function recalc() {
+      var b = besoin(), stock = stockInit(), cumulEntree = 0;
+      dispBesoin.textContent = opt() && opt().value ? fmt(b) : '—';
+      dispStock.textContent = opt() && opt().value ? fmt(stock) : '—';
+      body.querySelectorAll('tr.ligne').forEach(function (tr) {
+        var e = num(tr.querySelector('.col-entree').value);
+        var s = num(tr.querySelector('.col-sortie').value);
+        cumulEntree += e;
+        stock += e - s;
+        tr.querySelector('.disp-soldebesoin').textContent = opt() && opt().value ? fmt(b - cumulEntree) : '—';
+        tr.querySelector('.disp-soldestock').textContent = opt() && opt().value ? fmt(stock) : '—';
+      });
+    }
+
+    // Renumérote les name="Lignes[i]..." après ajout/suppression.
+    function reindex() {
+      body.querySelectorAll('tr.ligne').forEach(function (tr, i) {
+        tr.querySelectorAll('input').forEach(function (inp) {
+          inp.name = inp.name.replace(/Lignes\[\d+\]/, 'Lignes[' + i + ']');
+        });
+      });
+    }
+
+    function bindRow(tr) {
+      tr.querySelector('.col-entree').addEventListener('input', recalc);
+      tr.querySelector('.col-sortie').addEventListener('input', recalc);
+      tr.querySelector('.btn-del').addEventListener('click', function () {
+        if (body.querySelectorAll('tr.ligne').length > 1) { tr.remove(); reindex(); recalc(); }
+      });
+    }
+
+    btnAdd.addEventListener('click', function () {
+      var first = body.querySelector('tr.ligne');
+      var clone = first.cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (inp) {
+        if (inp.type === 'number') inp.value = '0'; else inp.value = '';
+      });
+      body.appendChild(clone);
+      reindex();
+      bindRow(clone);
+      recalc();
+    });
+
+    sel.addEventListener('change', recalc);
+    body.querySelectorAll('tr.ligne').forEach(bindRow);
+    recalc();
+  })();
+</script>
+}

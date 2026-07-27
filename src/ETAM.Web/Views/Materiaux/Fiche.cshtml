@@ -1,0 +1,51 @@
+@model List<ETAM.Domain.Entities.Materiau>
+@{ ViewData["Title"] = "Fiche de gestion des matériaux"; var chantierAffecte = ViewBag.ChantierAffecte as string; }
+
+@if (!string.IsNullOrEmpty(chantierAffecte))
+{
+    <div class="alert alert-info py-2">
+        <i class="fa-solid fa-helmet-safety me-1"></i>
+        Vous êtes magasinier du chantier <strong>@chantierAffecte</strong> — vous ne voyez que son stock.
+    </div>
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">@Model.Count matériau(x). Cliquez sur « Détails » pour voir l'historique des mouvements d'un article.</p>
+    <div class="d-flex align-items-center">
+        <a asp-action="NouveauMouvement" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau mouvement</a>
+        <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Materiaux", "ExportStock")' />
+    </div>
+</div>
+
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr>
+        <th>Chantier</th><th>Désignation</th><th>Localité</th>
+        <th class="text-end">Entrées (reçu)</th><th class="text-end">Sorties (utilisé)</th>
+        <th class="text-end">Stock dispo.</th><th class="text-end">Seuil</th><th>État</th><th></th>
+    </tr></thead>
+    <tbody>
+    @foreach (var m in Model)
+    {
+        var etat = m.EstStockCritique ? "<span class='badge bg-danger'>Critique</span>"
+                 : m.EstStockFaible ? "<span class='badge bg-warning text-dark'>Faible</span>"
+                 : "<span class='badge bg-success'>OK</span>";
+        <tr>
+            <td class="small">@m.Chantier?.Nom</td>
+            <td class="fw-semibold">@m.Designation</td>
+            <td class="small text-muted">@m.Localite</td>
+            <td class="text-end text-success">+@m.QuantiteRecue.ToString("N2")</td>
+            <td class="text-end text-danger">-@m.QuantiteUtilisee.ToString("N2")</td>
+            <td class="text-end fw-semibold">@m.StockDisponible.ToString("N2") @m.Unite</td>
+            <td class="text-end">@m.SeuilMinimal.ToString("N0")</td>
+            <td>@Html.Raw(etat)</td>
+            <td class="text-end">
+                <a asp-action="DetailsFiche" asp-route-id="@m.Id" class="btn btn-sm btn-outline-primary">
+                    <i class="fa-solid fa-list me-1"></i> Détails
+                </a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>

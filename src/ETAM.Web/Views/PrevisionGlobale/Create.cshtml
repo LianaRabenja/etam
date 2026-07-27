@@ -1,0 +1,138 @@
+@model ETAM.Application.DTOs.PrevisionGlobaleCreateDto
+@{
+    var estEdition = ViewBag.PrevId != null;
+    ViewData["Title"] = estEdition ? "Modifier la prévision globale" : "Nouvelle prévision globale";
+    var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier> ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>();
+    var rubriques = ViewBag.Rubriques as IEnumerable<string> ?? Enumerable.Empty<string>();
+}
+
+<div class="etam-card p-4">
+<form asp-action="@(estEdition ? "Edit" : "Create")" asp-route-id="@ViewBag.PrevId" method="post" id="formPG">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-5"><label class="form-label">Chantier <span class="text-danger">*</span></label>
+            <select asp-for="ChantierId" id="selChantier" class="form-select" required>
+                <option value="">-- choisir --</option>
+                @foreach (var c in chantiers)
+                {
+                    <option value="@c.Id"
+                            data-budget="@c.BudgetProjet.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                        @c.Nom (@c.Code)
+                    </option>
+                }
+            </select>
+            <small class="text-muted">Budget projet à couvrir : <strong id="budgetProjet">—</strong> Ar
+                <span class="text-muted">(marché − bénéfice)</span></small></div>
+        <div class="col-md-3"><label class="form-label">Date</label>
+            <input asp-for="DateCreation" type="date" class="form-control" /></div>
+        <div class="col-md-4"><label class="form-label">Observation</label>
+            <input asp-for="Observation" class="form-control" /></div>
+    </div>
+
+    <h6 class="fw-bold">Lignes prévisionnelles</h6>
+    <p class="small text-muted">Créez vos rubriques librement (Approvisionnement, Main d'œuvre, Matériel...) et détaillez chaque poste. Ex : Approvisionnement — Ciment — 3 t — 30 000 ; Main d'œuvre — Maçon — 1 — 1 000 000.</p>
+
+    <table class="table table-sm align-middle" id="tbl">
+        <thead><tr>
+            <th style="width:190px">Rubrique</th><th>Désignation</th><th style="width:90px">Unité</th>
+            <th style="width:110px">Quantité</th><th style="width:140px">Prix unitaire</th>
+            <th style="width:130px" class="text-end">Total</th><th style="width:40px"></th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot>
+            <tr>
+                <th colspan="5" class="text-end">Total général</th>
+                <th class="text-end" id="totalGeneral">0</th><th></th>
+            </tr>
+            <tr>
+                <th colspan="5" class="text-end fw-normal text-muted">Écart avec le budget projet</th>
+                <th class="text-end" id="ecart">—</th><th></th>
+            </tr>
+        </tfoot>
+    </table>
+    <button type="button" class="btn btn-sm btn-light" id="btnAdd"><i class="fa-solid fa-plus me-1"></i> Ajouter une ligne</button>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer (brouillon)</button>
+        <a asp-action="Index" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
+
+<datalist id="listeRubriques">
+    @foreach (var r in rubriques) { <option value="@r"></option> }
+</datalist>
+
+@* Lignes existantes (mode édition) sérialisées pour ré-affichage. *@
+<script id="lignesData" type="application/json">
+    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Lignes.Select(l => new {
+        l.Rubrique, l.Designation, l.Unite, l.Quantite, l.PrixUnitaire })))
+</script>
+
+@section Scripts {
+<partial name="_ValidationScriptsPartial" />
+<script>
+  let i = 0;
+  const inv = v => (v===null||v===undefined) ? '' : String(v);
+  function fmt(v){ return new Intl.NumberFormat('fr-FR').format(Math.round(v||0)); }
+
+  function row(d){
+    d = d || {};
+    const r = `<tr>
+      <td><input name="Lignes[${i}].Rubrique" list="listeRubriques" class="form-control form-control-sm" value="${inv(d.Rubrique)}" required></td>
+      <td><input name="Lignes[${i}].Designation" class="form-control form-control-sm" value="${inv(d.Designation)}" required></td>
+      <td><input name="Lignes[${i}].Unite" class="form-control form-control-sm" value="${inv(d.Unite)}" placeholder="t, m³..."></td>
+      <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" min="0" class="form-control form-control-sm js-q text-end" value="${inv(d.Quantite)||0}"></td>
+      <td><input name="Lignes[${i}].PrixUnitaire" type="number" step="0.01" min="0" class="form-control form-control-sm js-p text-end" value="${inv(d.PrixUnitaire)||0}"></td>
+      <td class="text-end fw-semibold js-total">0</td>
+      <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
+    </tr>`;
+    document.querySelector('#tbl tbody').insertAdjacentHTML('beforeend', r); i++;
+    recalc();
+  }
+
+  function budgetProjet(){
+    const sel = document.getElementById('selChantier');
+    const o = sel ? sel.options[sel.selectedIndex] : null;
+    return (o && o.value) ? (parseFloat(o.getAttribute('data-budget'))||0) : 0;
+  }
+
+  function recalc(){
+    let g = 0;
+    document.querySelectorAll('#tbl tbody tr').forEach(tr=>{
+      const q = parseFloat(tr.querySelector('.js-q')?.value)||0;
+      const p = parseFloat(tr.querySelector('.js-p')?.value)||0;
+      const t = q*p; g += t;
+      tr.querySelector('.js-total').textContent = fmt(t);
+    });
+    document.getElementById('totalGeneral').textContent = fmt(g);
+
+    // Écart avec le budget projet du chantier (marché − bénéfice).
+    const b = budgetProjet();
+    const elB = document.getElementById('budgetProjet');
+    const elE = document.getElementById('ecart');
+    if(elB) elB.textContent = b ? fmt(b) : '—';
+    if(elE){
+      if(!b){ elE.textContent = '—'; elE.className = 'text-end'; }
+      else {
+        const d = b - g;
+        elE.textContent = (d >= 0 ? 'reste ' : 'dépassement ') + fmt(Math.abs(d));
+        elE.className = 'text-end fw-semibold ' + (d >= 0 ? 'text-success' : 'text-danger');
+      }
+    }
+  }
+
+  document.getElementById('btnAdd').addEventListener('click', ()=>row());
+  document.getElementById('selChantier')?.addEventListener('change', recalc);
+  document.addEventListener('click', e=>{ if(e.target.closest('.js-del')){ e.target.closest('tr').remove(); recalc(); } });
+  document.addEventListener('input', e=>{ if(e.target.classList.contains('js-q')||e.target.classList.contains('js-p')) recalc(); });
+
+  // Chargement initial : lignes existantes (édition) ou une ligne vide (création).
+  try{
+    const data = JSON.parse(document.getElementById('lignesData').textContent.trim() || '[]');
+    if(data.length){ data.forEach(row); } else { row(); }
+  }catch(e){ row(); }
+</script>
+}

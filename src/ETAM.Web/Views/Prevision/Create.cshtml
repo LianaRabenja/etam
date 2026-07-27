@@ -1,0 +1,139 @@
+@model ETAM.Application.DTOs.PrevisionCreateDto
+@{
+    ViewData["Title"] = "Nouvelle prévision";
+    var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>;
+    var dettes = ViewBag.Dettes as IEnumerable<ETAM.Domain.Entities.DetteFournisseur> ?? Enumerable.Empty<ETAM.Domain.Entities.DetteFournisseur>();
+    var catalogue = ViewBag.Catalogue as IEnumerable<ETAM.Domain.Entities.ArticleCatalogue> ?? Enumerable.Empty<ETAM.Domain.Entities.ArticleCatalogue>();
+    var categories = ViewBag.Categories as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var blocages = ViewBag.Blocages as Dictionary<long, string> ?? new Dictionary<long, string>();
+}
+
+@if (blocages.Any())
+{
+    <div class="alert alert-warning">
+        <strong><i class="fa-solid fa-lock me-1"></i> Chantiers bloqués</strong>
+        <div class="small mt-1">Les travaux financés par la prévision précédente doivent être justifiés et réceptionnés avant d'en demander une nouvelle. Les autres chantiers restent disponibles.</div>
+        <ul class="small mb-0 mt-2">
+            @foreach (var c in chantiers ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+            {
+                @if (blocages.ContainsKey(c.Id))
+                {
+                    <li><strong>@c.Nom</strong> — @blocages[c.Id]</li>
+                }
+            }
+        </ul>
+    </div>
+}
+
+<div class="etam-card p-4">
+<form asp-action="Create" method="post" id="formPrev">
+    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+    <div class="row g-3 mb-3">
+        <div class="col-md-4"><label class="form-label">Chantier</label>
+            <select asp-for="ChantierId" class="form-select" required>
+                <option value="">-- choisir --</option>
+                @foreach (var c in chantiers ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+                {
+                    var bloque = blocages.ContainsKey(c.Id);
+                    <option value="@c.Id" disabled="@bloque">
+                        @c.Nom (@c.Code)@(bloque ? " — bloqué : travaux à justifier" : "")
+                    </option>
+                }
+            </select>
+            <small class="text-muted">Les chantiers bloqués ne sont pas sélectionnables.</small></div>
+        <div class="col-md-4"><label class="form-label">Date</label>
+            <input asp-for="DatePrevision" type="date" class="form-control" /></div>
+        <div class="col-md-4"><label class="form-label">Observation</label>
+            <input asp-for="Observation" class="form-control" /></div>
+    </div>
+    <h6 class="fw-bold">Lignes</h6>
+    <p class="small text-muted">Choisissez une désignation du catalogue : la catégorie et le prix se remplissent automatiquement. <strong>Le prix d'un article du catalogue est verrouillé</strong> (prix de référence). Pour un prix libre, saisissez une désignation hors catalogue.</p>
+    <p class="small text-muted">Pour un remboursement de dette, choisissez la dette dans la dernière colonne : elle diminuera automatiquement à l'exécution.</p>
+    <table class="table table-sm align-middle" id="tblLignes">
+        <thead><tr>
+            <th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th>
+            <th>Prix unit. estimé</th><th>Dette (remboursement)</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+    </table>
+    <button type="button" class="btn btn-sm btn-light" id="btnAdd"><i class="fa-solid fa-plus me-1"></i> Ajouter une ligne</button>
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer (brouillon)</button>
+        <a asp-action="Index" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
+
+@* Gabarit serveur des options de dettes (évite tout problème d'échappement JS) *@
+<select id="detteTemplate" class="d-none">
+    <option value="">—</option>
+    @foreach (var d in dettes)
+    {
+        <option value="@d.Id">@d.Fournisseur?.Nom - @d.Libelle (reste @d.SoldeRestant.ToString("N0"))</option>
+    }
+</select>
+
+@* Catalogue : désignations avec prix/catégorie (data-* lus par le JS pour le pré-remplissage) *@
+<datalist id="listeDesignations">
+    @foreach (var a in catalogue)
+    {
+        <option value="@a.Designation" data-prix="@a.PrixUnitaire.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-cat="@a.Categorie"></option>
+    }
+</datalist>
+<datalist id="listeCategories">
+    @foreach (var cat in categories) { <option value="@cat"></option> }
+</datalist>
+
+@section Scripts {
+<partial name="_ValidationScriptsPartial" />
+<script>
+  const detteOptions = document.getElementById('detteTemplate').innerHTML;
+  let i = 0;
+  function row(){
+    const r = `<tr>
+      <td><input name="Lignes[${i}].Designation" list="listeDesignations" class="form-control form-control-sm js-des" required></td>
+      <td><input name="Lignes[${i}].Categorie" list="listeCategories" class="form-control form-control-sm js-cat" required></td>
+      <td><select name="Lignes[${i}].TypeBudget" class="form-select form-select-sm">
+            <option value="0">Compte</option><option value="1">Matériel</option></select></td>
+      <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm" value="1"></td>
+      <td><input name="Lignes[${i}].PrixUnitaireEstime" type="number" step="0.01" class="form-control form-control-sm js-prix" value="0"></td>
+      <td><select name="Lignes[${i}].DetteFournisseurId" class="form-select form-select-sm">${detteOptions}</select></td>
+      <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
+    </tr>`;
+    document.querySelector('#tblLignes tbody').insertAdjacentHTML('beforeend', r);
+    i++;
+  }
+  document.getElementById('btnAdd').addEventListener('click', row);
+  document.addEventListener('click', e=>{ if(e.target.closest('.js-del')) e.target.closest('tr').remove(); });
+
+  // Pré-remplissage depuis le catalogue. IMPORTANT : un article du catalogue impose son prix,
+  // le champ devient alors non modifiable (prix de référence verrouillé).
+  function preremplir(target){
+    if(!target.classList.contains('js-des')) return;
+    const tr = target.closest('tr');
+    const inPrix = tr.querySelector('.js-prix');
+    const opt = document.querySelector('#listeDesignations option[value="'+ target.value.replace(/"/g,'\\"') +'"]');
+
+    if(!opt){
+      // Désignation hors catalogue : prix libre.
+      inPrix.readOnly = false;
+      inPrix.classList.remove('bg-light');
+      inPrix.title = '';
+      return;
+    }
+    const prix = opt.getAttribute('data-prix'), cat = opt.getAttribute('data-cat');
+    if(cat) tr.querySelector('.js-cat').value = cat;
+    if(prix){
+      inPrix.value = prix;
+      inPrix.readOnly = true;                 // verrouillé : prix du catalogue
+      inPrix.classList.add('bg-light');
+      inPrix.title = 'Prix du catalogue — non modifiable';
+    }
+  }
+  document.addEventListener('input', e => preremplir(e.target));
+  document.addEventListener('change', e => preremplir(e.target));
+  document.addEventListener('blur', e => preremplir(e.target), true);
+
+  row();
+</script>
+}

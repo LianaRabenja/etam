@@ -1,0 +1,140 @@
+@model ETAM.Domain.Entities.PrevisionJournaliere
+@using ETAM.Domain.Enums
+@{
+    ViewData["Title"] = $"Prévision {Model.Reference}";
+    var totalCompte = Model.Lignes.Where(l => l.TypeBudget == TypeBudget.Compte).Sum(l => l.Total);
+    var totalMateriel = Model.Lignes.Where(l => l.TypeBudget == TypeBudget.Materiel).Sum(l => l.Total);
+    decimal bcRestant = ViewBag.BudgetCompteRestant ?? 0m;
+    decimal bmRestant = ViewBag.BudgetMaterielRestant ?? 0m;
+    var depasseCompte = totalCompte > bcRestant;
+    var depasseMateriel = totalMateriel > bmRestant;
+}
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="etam-card p-4">
+            <div class="d-flex justify-content-between">
+                <h5 class="fw-bold">@Model.Reference</h5>
+                <div>
+                    @if (Model.EstModifiable && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+                    {
+                        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-light"><i class="fa-solid fa-pen me-1"></i> Modifier</a>
+                    }
+                    <span class="badge bg-secondary align-self-start">@Model.Statut</span>
+                </div>
+            </div>
+            <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Désignation</th><th>Catégorie</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                @foreach (var l in Model.Lignes)
+                {
+                    <tr>
+                        <td>@l.Designation</td><td class="small text-muted">@l.Categorie</td>
+                        <td><span class="badge @(l.TypeBudget == TypeBudget.Compte ? "bg-primary" : "bg-success")">@l.TypeBudget</span></td>
+                        <td class="text-end">@l.Quantite.ToString("N2")</td>
+                        <td class="text-end">@l.PrixUnitaireEstime.ToString("N0")</td>
+                        <td class="text-end fw-semibold">@l.Total.ToString("N0")</td>
+                    </tr>
+                }
+                </tbody>
+                <tfoot><tr><th colspan="5" class="text-end">Total</th><th class="text-end">@Model.Total.ToString("N0") Ar</th></tr></tfoot>
+            </table>
+            @if (!string.IsNullOrEmpty(Model.Observation)) { <p class="small text-muted mb-0">@Model.Observation</p> }
+            @if (!string.IsNullOrEmpty(Model.MotifRefus)) { <p class="small text-danger mb-0">Motif de refus : @Model.MotifRefus</p> }
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Impact budgétaire : aide à la décision avant validation -->
+        <div class="etam-card p-4 mb-4">
+            <h6 class="fw-bold mb-3">Impact budgétaire</h6>
+            <div class="d-flex justify-content-between mb-1"><span class="small text-muted">Budget Comptes</span>
+                <span class="fw-semibold">@totalCompte.ToString("N0") Ar</span></div>
+            <div class="small mb-2 @(depasseCompte ? "text-danger" : "text-success")">
+                <i class="fa-solid @(depasseCompte ? "fa-triangle-exclamation" : "fa-check")"></i>
+                Restant après : @((bcRestant - totalCompte).ToString("N0")) Ar
+            </div>
+            <div class="d-flex justify-content-between mb-1"><span class="small text-muted">Budget Matériel (@Model.Chantier?.Nom)</span>
+                <span class="fw-semibold">@totalMateriel.ToString("N0") Ar</span></div>
+            <div class="small @(depasseMateriel ? "text-danger" : "text-success")">
+                <i class="fa-solid @(depasseMateriel ? "fa-triangle-exclamation" : "fa-check")"></i>
+                Restant après : @((bmRestant - totalMateriel).ToString("N0")) Ar
+            </div>
+            @if (depasseCompte || depasseMateriel)
+            {
+                <div class="alert alert-warning small mt-3 mb-0">Cette prévision dépasse un budget : l'exécution nécessitera la réserve (validation Administrateur).</div>
+            }
+        </div>
+
+        <!-- Actions du workflow, selon statut et rôle -->
+        <div class="etam-card p-4">
+            <h6 class="fw-bold mb-3">Workflow</h6>
+
+            @if (Model.Statut == StatutPrevision.Brouillon)
+            {
+                <form asp-action="Soumettre" method="post" class="mb-2">
+                    @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
+                    <button class="btn btn-info w-100"><i class="fa-solid fa-paper-plane me-1"></i> Soumettre</button>
+                </form>
+            }
+            @if (Model.Statut == StatutPrevision.Soumise && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+            {
+                <form asp-action="ValiderRf" method="post" class="mb-2">
+                    @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
+                    <button class="btn btn-primary w-100"><i class="fa-solid fa-check me-1"></i> Valider (Responsable Financier)</button>
+                </form>
+            }
+            @if (Model.Statut == StatutPrevision.ValideeResponsableFinancier && User.IsInRole("Administrateur"))
+            {
+                <form asp-action="ValiderAdmin" method="post" class="mb-2">
+                    @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
+                    <button class="btn btn-warning w-100"><i class="fa-solid fa-check-double me-1"></i> Valider (Administrateur)</button>
+                </form>
+            }
+            @if (Model.Statut == StatutPrevision.ValideeAdministrateur && User.IsInRole("Administrateur"))
+            {
+                <form asp-action="Executer" method="post" class="mb-2">
+                    @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
+                    <input type="hidden" name="utiliserReserve" value="@((depasseCompte || depasseMateriel).ToString().ToLower())" />
+                    <button class="btn btn-success w-100"><i class="fa-solid fa-gears me-1"></i> Exécuter</button>
+                </form>
+            }
+            @if (Model.Statut != StatutPrevision.Executee && Model.Statut != StatutPrevision.Refusee
+                 && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+            {
+                <button class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#modalRefus">
+                    <i class="fa-solid fa-xmark me-1"></i> Refuser
+                </button>
+            }
+            @if (Model.Statut == StatutPrevision.Executee)
+            {
+                <div class="alert alert-success small mb-0"><i class="fa-solid fa-circle-check me-1"></i> Prévision exécutée le @Model.DateExecution?.ToLocalTime().ToString("dd/MM/yyyy")</div>
+            }
+            @if (Model.Statut == StatutPrevision.Refusee)
+            {
+                <div class="alert alert-danger small mb-0"><i class="fa-solid fa-ban me-1"></i> Prévision refusée</div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modale de refus -->
+<div class="modal fade" id="modalRefus" tabindex="-1">
+  <div class="modal-dialog">
+    <form asp-action="Refuser" method="post" class="modal-content">
+      @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
+      <div class="modal-header"><h6 class="modal-title">Refuser la prévision</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label">Motif du refus</label>
+        <textarea name="motif" class="form-control" rows="3" required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-danger">Confirmer le refus</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<a asp-action="Index" class="btn btn-light mt-3">Retour à la liste</a>

@@ -1,0 +1,128 @@
+@model ETAM.Domain.Entities.PrevisionGlobale
+@using ETAM.Domain.Enums
+@{
+    ViewData["Title"] = $"Prévision globale {Model.Reference}";
+    var badge = Model.Statut switch {
+        StatutPrevisionGlobale.MiseEnBanque => "bg-success",
+        StatutPrevisionGlobale.ValideeAdministrateur => "bg-primary",
+        StatutPrevisionGlobale.ValideeResponsableFinancier => "bg-info text-dark",
+        StatutPrevisionGlobale.Soumise => "bg-warning text-dark",
+        StatutPrevisionGlobale.Refusee => "bg-danger",
+        _ => "bg-secondary" };
+    bool isAdmin = User.IsInRole("Administrateur");
+    bool isRf = User.IsInRole("Correspondant");
+    bool isChef = User.IsInRole("Chef de chantier");
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h4 class="fw-bold mb-1">@Model.Reference <span class="badge badge-statut @badge">@Model.Statut</span></h4>
+        <span class="text-muted">@Model.Chantier?.Nom · @Model.DateCreation.ToString("dd/MM/yyyy") · Total : <strong>@Model.Total.ToString("N0") Ar</strong></span>
+    </div>
+    <div class="text-nowrap">
+        @if (Model.EstModifiable && (isAdmin || isRf || isChef))
+        {
+            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-light"><i class="fa-solid fa-pen me-1"></i> Modifier</a>
+            <form asp-action="Soumettre" asp-route-id="@Model.Id" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i> Soumettre</button>
+            </form>
+        }
+        @if (Model.Statut == StatutPrevisionGlobale.Soumise && (isAdmin || isRf))
+        {
+            <form asp-action="ValiderRf" asp-route-id="@Model.Id" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-success"><i class="fa-solid fa-check me-1"></i> Valider (RF)</button>
+            </form>
+        }
+        @if (Model.Statut == StatutPrevisionGlobale.ValideeResponsableFinancier && isAdmin)
+        {
+            <form asp-action="ValiderAdmin" asp-route-id="@Model.Id" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-success"><i class="fa-solid fa-check-double me-1"></i> Valider (Admin)</button>
+            </form>
+        }
+        @if (Model.Statut == StatutPrevisionGlobale.ValideeAdministrateur && isAdmin)
+        {
+            <form asp-action="MettreEnBanque" asp-route-id="@Model.Id" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-success"><i class="fa-solid fa-building-columns me-1"></i> Activer (budget de référence)</button>
+            </form>
+        }
+        @if ((Model.Statut == StatutPrevisionGlobale.Soumise || Model.Statut == StatutPrevisionGlobale.ValideeResponsableFinancier) && (isAdmin || isRf))
+        {
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRefus"><i class="fa-solid fa-xmark me-1"></i> Refuser</button>
+        }
+        <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("PrevisionGlobale", "Export", Model.Id)' />
+        <a asp-action="Index" class="btn btn-light">Retour</a>
+    </div>
+</div>
+
+@if (Model.Statut == StatutPrevisionGlobale.Refusee && !string.IsNullOrWhiteSpace(Model.MotifRefus))
+{
+    <div class="alert alert-danger"><strong>Motif du refus :</strong> @Model.MotifRefus</div>
+}
+@if (Model.Statut == StatutPrevisionGlobale.MiseEnBanque)
+{
+    <div class="alert alert-success"><i class="fa-solid fa-circle-check me-1"></i> Montant mis en banque le @Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yyyy"). Transférez ensuite vers le Budget Matériel via le menu Banques.</div>
+}
+
+<!-- Suivi du circuit de validation -->
+<div class="etam-card p-3 mb-3">
+    <div class="row text-center small">
+        <div class="col"><div class="text-muted">Soumise par</div><div class="fw-semibold">@(Model.SoumisePar ?? "—")</div><div class="text-muted">@(Model.DateSoumission?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
+        <div class="col"><div class="text-muted">Validée RF</div><div class="fw-semibold">@(Model.ValideeParRfId ?? "—")</div><div class="text-muted">@(Model.DateValidationRf?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
+        <div class="col"><div class="text-muted">Validée Admin</div><div class="fw-semibold">@(Model.ValideeParAdminId ?? "—")</div><div class="text-muted">@(Model.DateValidationAdmin?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
+        <div class="col"><div class="text-muted">Mise en banque</div><div class="fw-semibold">@(Model.Statut == StatutPrevisionGlobale.MiseEnBanque ? "Oui" : "—")</div><div class="text-muted">@(Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
+    </div>
+</div>
+
+<!-- Lignes groupées par rubrique -->
+@foreach (var groupe in Model.Lignes.GroupBy(l => l.Rubrique).OrderBy(g => g.Key))
+{
+    <div class="etam-card p-3 mb-3">
+        <h6 class="fw-bold mb-3"><i class="fa-solid fa-folder-open me-1 text-primary"></i> @groupe.Key
+            <span class="text-muted fw-normal">— sous-total @groupe.Sum(l => l.Total).ToString("N0") Ar</span></h6>
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Désignation</th><th>Unité</th><th class="text-end">Quantité</th><th class="text-end">Prix unitaire</th><th class="text-end">Total</th></tr></thead>
+            <tbody>
+            @foreach (var l in groupe)
+            {
+                <tr>
+                    <td class="fw-semibold">@l.Designation</td>
+                    <td class="small text-muted">@l.Unite</td>
+                    <td class="text-end">@l.Quantite.ToString("N0")</td>
+                    <td class="text-end">@l.PrixUnitaire.ToString("N0")</td>
+                    <td class="text-end fw-semibold">@l.Total.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="etam-card p-3 mb-3 d-flex justify-content-between align-items-center">
+    <span class="fw-bold fs-5">Total général du projet</span>
+    <span class="fw-bold fs-5 text-primary">@Model.Total.ToString("N0") Ar</span>
+</div>
+
+@if ((Model.Statut == StatutPrevisionGlobale.Soumise || Model.Statut == StatutPrevisionGlobale.ValideeResponsableFinancier) && (isAdmin || isRf))
+{
+    <div class="modal fade" id="modalRefus" tabindex="-1">
+        <div class="modal-dialog">
+            <form asp-action="Refuser" asp-route-id="@Model.Id" method="post" class="modal-content">
+                @Html.AntiForgeryToken()
+                <div class="modal-header"><h5 class="modal-title">Refuser la prévision</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">Motif du refus</label>
+                    <textarea name="motif" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-danger">Refuser</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}

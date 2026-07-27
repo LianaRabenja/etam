@@ -1,0 +1,37 @@
+# Déploiement ETAM ERP sur Render (Blueprint).
+# Render lit ce fichier et crée la base PostgreSQL + le service web automatiquement.
+services:
+  - type: web
+    name: etam-erp
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt          # au plus près de Madagascar parmi les régions disponibles
+    healthCheckPath: /Account/Login
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: RENDER
+        value: "true"
+      # Chaîne de connexion construite à partir de la base créée ci-dessous.
+      - key: ETAM_CONNECTION
+        fromDatabase:
+          name: etam-db
+          property: connectionString
+      # Mots de passe initiaux : générés par Render, à consulter dans le tableau de bord.
+      - key: ETAM_ADMIN_PASSWORD
+        generateValue: true
+      - key: ETAM_RF_PASSWORD
+        generateValue: true
+      - key: ETAM_CHEF_PASSWORD
+        generateValue: true
+      - key: ETAM_MAGASINIER_PASSWORD
+        generateValue: true
+
+databases:
+  - name: etam-db
+    databaseName: etam_erp
+    user: etam
+    plan: free
+    region: frankfurt

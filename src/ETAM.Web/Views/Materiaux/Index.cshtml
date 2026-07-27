@@ -1,0 +1,95 @@
+@model List<ETAM.Domain.Entities.Materiau>
+@{ ViewData["Title"] = "Stock des matériaux"; }
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">@Model.Count article(s) en stock — rattachés directement aux chantiers. « Entrées » = reçu, « Sorties » = utilisé.</p>
+    @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier"))
+    {
+        <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau matériau</a>
+    }
+</div>
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr>
+        <th>Chantier</th><th>Désignation</th><th>Catégorie</th>
+        <th class="text-end">Commandé (total)</th><th class="text-end">Entrées (reçu)</th><th style="width:130px">Réception</th>
+        <th class="text-end">Sorties (utilisé)</th><th class="text-end">Stock dispo.</th>
+        <th class="text-end">Seuil</th><th>État</th><th></th>
+    </tr></thead>
+    <tbody>
+    @foreach (var m in Model)
+    {
+        var etat = m.EstStockCritique ? "<span class='badge bg-danger'>Critique</span>"
+                 : m.EstStockFaible ? "<span class='badge bg-warning text-dark'>Faible</span>"
+                 : "<span class='badge bg-success'>OK</span>";
+        var pctRecu = m.PourcentageReception;
+        var barColor = pctRecu >= 90 ? "#059669" : "#2563eb";
+        <tr>
+            <td class="small">@m.Chantier?.Nom</td>
+            <td class="fw-semibold">@m.Designation</td>
+            <td class="small text-muted">@m.Categorie</td>
+            <td class="text-end">@m.QuantiteCommandee.ToString("N0") @m.Unite</td>
+            <td class="text-end text-success">+@m.QuantiteRecue.ToString("N2")</td>
+            <td>
+                <div class="etam-progress"><span style="width:@(Math.Min(pctRecu,100))%;background:@barColor"></span></div>
+                <small class="text-muted">@pctRecu.ToString("N0")% reçu</small>
+            </td>
+            <td class="text-end text-danger">-@m.QuantiteUtilisee.ToString("N2")</td>
+            <td class="text-end fw-semibold">@m.StockDisponible.ToString("N2") @m.Unite</td>
+            <td class="text-end">@m.SeuilMinimal.ToString("N0")</td>
+            <td>@Html.Raw(etat)</td>
+            <td class="text-end text-nowrap">
+                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalRecep-@m.Id" title="Entrée / réception">
+                    <i class="fa-solid fa-arrow-down"></i> Entrée
+                </button>
+                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalSortie-@m.Id" title="Sortie de stock">
+                    <i class="fa-solid fa-arrow-up"></i> Sortie
+                </button>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>
+
+@foreach (var m in Model)
+{
+    <div class="modal fade" id="modalRecep-@m.Id" tabindex="-1">
+      <div class="modal-dialog">
+        <form asp-action="Receptionner" method="post" class="modal-content">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="id" value="@m.Id" />
+          <div class="modal-header"><h6 class="modal-title">Entrée (réception) — @m.Designation</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label">Quantité reçue (@m.Unite)</label>
+            <input type="number" step="0.001" min="0" name="quantite" class="form-control" required />
+            <small class="text-muted">Reçu actuel : @m.QuantiteRecue.ToString("N2") / commandé @m.QuantiteCommandee.ToString("N2")</small>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+            <button type="submit" class="btn btn-success">Enregistrer l'entrée</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal fade" id="modalSortie-@m.Id" tabindex="-1">
+      <div class="modal-dialog">
+        <form asp-action="Sortir" method="post" class="modal-content">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="id" value="@m.Id" />
+          <div class="modal-header"><h6 class="modal-title">Sortie de stock — @m.Designation</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label">Quantité sortie (@m.Unite)</label>
+            <input type="number" step="0.001" min="0" max="@m.StockDisponible" name="quantite" class="form-control" required />
+            <small class="text-muted">Stock disponible : @m.StockDisponible.ToString("N2") @m.Unite</small>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+            <button type="submit" class="btn btn-danger">Enregistrer la sortie</button>
+          </div>
+        </form>
+      </div>
+    </div>
+}

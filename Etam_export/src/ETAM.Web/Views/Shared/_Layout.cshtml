@@ -1,0 +1,172 @@
+@using Microsoft.AspNetCore.Identity
+@using ETAM.Infrastructure.Identity
+@using ETAM.Domain.Interfaces
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IUnitOfWork Uow
+@{
+    var ctrl = ViewContext.RouteData.Values["controller"]?.ToString();
+    string Active(string c) => string.Equals(ctrl, c, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    var userName = User.Identity?.Name ?? "Utilisateur";
+    var initiales = userName.Length >= 2 ? userName.Substring(0,2).ToUpper() : "ET";
+    // Nombre réel d'alertes non lues, affiché en badge sur la cloche de notifications.
+    var nbAlertesNonLues = User.Identity?.IsAuthenticated == true
+        ? await Uow.Alertes.CountAsync(a => !a.EstLue)
+        : 0;
+}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] · ETAM ERP</title>
+    <!-- Préconnexion aux CDN utilisés plus bas : gagne le temps de résolution DNS + poignée de
+         main TLS avant même que le navigateur ne rencontre les balises <link>/<script> correspondantes. -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.datatables.net" crossorigin />
+    <link rel="preconnect" href="https://code.jquery.com" crossorigin />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+    <link rel="dns-prefetch" href="https://cdn.datatables.net" />
+    <link rel="dns-prefetch" href="https://code.jquery.com" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" />
+    <link rel="stylesheet" href="~/css/etam.css" asp-append-version="true" />
+</head>
+<body>
+<div class="etam-wrapper">
+    <!-- Sidebar sombre -->
+    <aside class="etam-sidebar" id="etamSidebar">
+        <div class="etam-brand">
+            <div class="logo">E</div>
+            <div>
+                <div class="title">ETAM ERP</div>
+                <div class="subtitle">Forage &amp; BTP</div>
+            </div>
+        </div>
+        @{
+            var isAdmin = User.IsInRole("Administrateur");
+            var isRF = User.IsInRole("Correspondant");
+            var isChef = User.IsInRole("Chef de chantier");
+            var isMagasinier = User.IsInRole("Magasinier");
+            var voitChantiers = isAdmin || isRF;
+            var voitAppro = isAdmin || isRF || isChef;
+            var voitPrev = isAdmin || isRF;
+            var voitBanques = isAdmin || isRF;
+            var voitRapports = isAdmin || isRF;
+            var voitRapportsTravail = isAdmin || isRF || isChef;
+            var voitStock = isAdmin || isChef || isMagasinier;
+        }
+        <ul class="etam-nav">
+            <li class="section">Pilotage</li>
+            @if (isAdmin || isRF) { <li><a class="@Active("Home")" href="/Home/Index"><i class="fa-solid fa-gauge-high"></i> Dashboard</a></li> }
+            @if (!isAdmin && !isRF) { <li><a href="/Home/Accueil"><i class="fa-solid fa-house"></i> Accueil</a></li> }
+            @if (voitChantiers) { <li><a class="@Active("Chantiers")" href="/Chantiers/Index"><i class="fa-solid fa-helmet-safety"></i> Chantiers</a></li> }
+
+            @if (isAdmin || voitAppro || voitPrev) { <li class="section">Finances</li> }
+            @if (isAdmin) { <li><a href="/BudgetComptes/Index"><i class="fa-solid fa-wallet"></i> Budget Comptes</a></li> }
+            @if (isAdmin) { <li><a href="/BudgetMateriel/Index"><i class="fa-solid fa-boxes-stacked"></i> Budget Matériel</a></li> }
+            @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> Approvisionnements</a></li> }
+            @if (isAdmin || isRF) { <li><a class="@Active("Catalogue")" href="/Catalogue/Index"><i class="fa-solid fa-list-check"></i> Catalogue (désignations)</a></li> }
+            @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-calendar-day"></i> Prévisions Journalières</a></li> }
+            @if (isAdmin) { <li><a href="/Depenses/Index"><i class="fa-solid fa-receipt"></i> Dépenses</a></li> }
+
+            @if (isAdmin || voitBanques) { <li class="section">Trésorerie</li> }
+            @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> Banques</a></li> }
+            @if (isAdmin) { <li><a class="@Active("Fournisseurs")" href="/Fournisseurs/Index"><i class="fa-solid fa-truck-field"></i> Fournisseurs</a></li> }
+            @if (isAdmin) { <li><a class="@Active("Dettes")" href="/Dettes/Index"><i class="fa-solid fa-file-invoice-dollar"></i> Dettes fournisseurs</a></li> }
+
+            @if (isAdmin || voitStock) { <li class="section">Logistique</li> }
+            @if (voitStock) { <li><a class="@Active("Materiaux")" href="/Materiaux/Index"><i class="fa-solid fa-trowel-bricks"></i> Stock (Matériaux)</a></li> }
+            @if (isAdmin) { <li><a href="/Alertes/Index"><i class="fa-solid fa-bell"></i> Alertes</a></li> }
+
+            @if (isAdmin || voitRapports || voitRapportsTravail) { <li class="section">Administration</li> }
+            @if (voitRapportsTravail) { <li><a class="@Active("RapportsTravail")" href="/RapportsTravail/Index"><i class="fa-solid fa-file-signature"></i> Rapport de travail</a></li> }
+            @if (voitRapports) { <li><a href="/Rapports/Index"><i class="fa-solid fa-chart-pie"></i> Rapports</a></li> }
+            @if (isAdmin) { <li><a href="/Audit/Index"><i class="fa-solid fa-clipboard-list"></i> Journal d'audit</a></li> }
+            @if (isAdmin) { <li><a href="/Utilisateurs/Index"><i class="fa-solid fa-users"></i> Utilisateurs</a></li> }
+            @if (isAdmin) { <li><a href="/Parametres/Index"><i class="fa-solid fa-gear"></i> Paramètres</a></li> }
+        </ul>
+    </aside>
+
+    <!-- Zone principale -->
+    <div class="etam-main">
+        <header class="etam-header">
+            <div class="d-flex align-items-center gap-3">
+                <button class="etam-toggle" onclick="document.getElementById('etamSidebar').classList.toggle('open')">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <h1 class="page-title">@ViewData["Title"]</h1>
+            </div>
+            <div class="actions">
+                <a href="/Alertes/Index" class="etam-badge-alert position-relative" title="@nbAlertesNonLues alerte(s) non lue(s)">
+                    <i class="fa-solid fa-bell"></i>
+                    <span id="badgeNotifCount" class="position-absolute badge rounded-pill bg-danger"
+                          style="top:-4px;right:-6px;font-size:.65rem; @(nbAlertesNonLues > 0 ? "" : "display:none;")">
+                        @(nbAlertesNonLues > 99 ? "99+" : nbAlertesNonLues.ToString())
+                    </span>
+                </a>
+                <div class="etam-user">
+                    <div class="etam-avatar">@initiales</div>
+                    <div class="d-none d-md-block">
+                        <div style="font-weight:600;font-size:.85rem">@userName</div>
+                        <div style="font-size:.7rem;color:var(--etam-muted)">ETAM</div>
+                    </div>
+                    <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-sm btn-light" title="Déconnexion">
+                            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </header>
+
+        <main class="etam-content">
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show">@TempData["Success"]
+                    <button class="btn-close" data-bs-dismiss="alert"></button></div>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show">@TempData["Error"]
+                    <button class="btn-close" data-bs-dismiss="alert"></button></div>
+            }
+            @RenderBody()
+        </main>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+  $(function(){
+    $('.datatable').DataTable({
+      language:{ url:'https://cdn.datatables.net/plug-ins/1.13.8/i18n/fr-FR.json' },
+      pageLength:10, order:[]
+    });
+  });
+
+  // Met à jour le badge de notifications dans l'en-tête (appelé après un "marquer comme lue" en AJAX).
+  window.etamSetBadgeNotif = function(n){
+    var el = document.getElementById('badgeNotifCount');
+    if(!el) return;
+    if(n > 0){
+      el.style.display = '';
+      el.textContent = n > 99 ? '99+' : n;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '0';
+    }
+  };
+</script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,19 @@
+@*
+    Boutons d'export PDF / Excel réutilisables.
+    Usage :
+      <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Materiaux", "ExportStock", null)' />
+*@
+@model ETAM.Web.Models.ExportLiens
+
+<div class="btn-group btn-group-sm ms-2" role="group" aria-label="Exporter">
+    <a class="btn btn-outline-danger"
+       asp-controller="@Model.Controleur" asp-action="@Model.Action"
+       asp-route-id="@Model.Id" asp-route-format="pdf" title="Exporter en PDF">
+        <i class="fa-solid fa-file-pdf me-1"></i> PDF
+    </a>
+    <a class="btn btn-outline-success"
+       asp-controller="@Model.Controleur" asp-action="@Model.Action"
+       asp-route-id="@Model.Id" asp-route-format="excel" title="Exporter en Excel">
+        <i class="fa-solid fa-file-excel me-1"></i> Excel
+    </a>
+</div>

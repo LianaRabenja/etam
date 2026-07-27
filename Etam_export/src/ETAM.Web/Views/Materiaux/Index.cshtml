@@ -1,0 +1,71 @@
+@model List<ETAM.Domain.Entities.MouvementMateriau>
+@{ ViewData["Title"] = "Fiche de gestion des matériaux"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">Historique complet des mouvements de stocks. « Entrée » = reçu, « Sortie » = utilisé.</p>
+    @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier"))
+    {
+        <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau mouvement</a>
+    }
+</div>
+
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable small">
+    <thead class="table-light">
+        <tr>
+            <th style="width: 90px">Date</th>
+            <th style="width: 150px">Matériau</th>
+            <th style="width: 80px">Article</th>
+            <th class="text-end" style="width: 70px">Entrée</th>
+            <th class="text-end" style="width: 70px">Sortie</th>
+            <th class="text-end" style="width: 80px">Solde en stock</th>
+            <th style="width: 120px">Besoin/Objectif</th>
+            <th>Motif</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (Model?.Any() == true)
+    {
+        string? derniereDesignation = null;
+        @foreach (var m in Model)
+        {
+            // Ajouter un séparateur entre les matériaux
+            if (derniereDesignation != null && derniereDesignation != m.Materiau?.Designation)
+            {
+                <tr class="table-secondary" style="height: 8px;"><td colspan="8"></td></tr>
+            }
+            derniereDesignation = m.Materiau?.Designation;
+
+            <tr>
+                <td>@m.DateMouvement.ToString("dd/MM/yy")</td>
+                <td class="fw-semibold">@m.Materiau?.Designation</td>
+                <td class="text-muted">@m.MateriauxId</td>
+                <td class="text-end text-success">
+                    @if (m.QuantiteEntree > 0)
+                    {
+                        <span>@m.QuantiteEntree.ToString("N0")</span>
+                    }
+                </td>
+                <td class="text-end text-danger">
+                    @if (m.QuantiteSortie > 0)
+                    {
+                        <span>@m.QuantiteSortie.ToString("N0")</span>
+                    }
+                </td>
+                <td class="text-end fw-semibold">@m.SoldeEnStock.ToString("N0")</td>
+                <td class="small text-muted">@m.BesoinOuObjectif</td>
+                <td class="small">@m.Motif</td>
+            </tr>
+        }
+    }
+    else
+    {
+        <tr>
+            <td colspan="8" class="text-center text-muted py-3">
+                <i class="fa-solid fa-inbox me-2"></i>Aucun mouvement enregistré
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>

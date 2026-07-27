@@ -1,0 +1,53 @@
+@model ETAM.Domain.Entities.MouvementMateriau
+@{ ViewData["Title"] = "Nouveau mouvement"; var materiaux = ViewBag.Materiaux as IEnumerable<ETAM.Domain.Entities.Materiau>; }
+
+<div class="etam-card p-4" style="max-width:800px">
+<h5 class="mb-4">Enregistrer un mouvement de matériau</h5>
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label">Matériau <span class="text-danger">*</span></label>
+            <select asp-for="MateriauxId" class="form-select" required>
+                <option value="">-- choisir un matériau --</option>
+                @foreach (var m in materiaux ?? Enumerable.Empty<ETAM.Domain.Entities.Materiau>())
+                {
+                    <option value="@m.Id">[@m.Chantier?.Nom] @m.Designation (@m.Unite)</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Date du mouvement <span class="text-danger">*</span></label>
+            <input asp-for="DateMouvement" type="datetime-local" class="form-control" required />
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Besoin ou objectif</label>
+            <input asp-for="BesoinOuObjectif" class="form-control" placeholder="ex: LINTEAUX, POTEAUX..." />
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Entrée (reçu)</label>
+            <input asp-for="QuantiteEntree" type="number" step="0.001" min="0" value="0" class="form-control" />
+            <small class="text-muted">Quantité reçue</small>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Sortie (utilisé)</label>
+            <input asp-for="QuantiteSortie" type="number" step="0.001" min="0" value="0" class="form-control" />
+            <small class="text-muted">Quantité utilisée</small>
+        </div>
+
+        <div class="col-md-12">
+            <label class="form-label">Motif du mouvement</label>
+            <textarea asp-for="Motif" class="form-control" rows="2" placeholder="Raison du mouvement (ex: Utilisation sur chantier, Réception fournisseur...)"></textarea>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer le mouvement</button>
+        <a asp-action="Index" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
