@@ -7,6 +7,7 @@ using ETAM.Web.Middleware;
 using FluentValidation.AspNetCore;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.ResponseCompression;
 using Serilog;
@@ -90,7 +91,21 @@ if (!string.IsNullOrWhiteSpace(hangfireConn))
     builder.Services.AddHangfireServer();
 }
 
+// ---------- Proxy inverse (Render, Nginx...) ----------
+// Sans cela, l'application croit recevoir du HTTP simple : les redirections
+// et les cookies « Secure » ne fonctionnent plus correctement.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // L'adresse du proxy Render n'est pas connue à l'avance : on accepte celle transmise.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
+
+// Doit être appelé AVANT tout le reste du pipeline.
+app.UseForwardedHeaders();
 
 // ---------- Pipeline ----------
 if (!app.Environment.IsDevelopment())

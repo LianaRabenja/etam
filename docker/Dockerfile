@@ -12,6 +12,13 @@ RUN dotnet publish "src/ETAM.Web/ETAM.Web.csproj" -c Release -o /app/publish /p:
 # ---- Runtime ----
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
+
+# QuestPDF (génération des PDF) a besoin des polices système : sans elles,
+# tout export PDF échoue sur Linux. On installe fontconfig et les polices DejaVu.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libfontconfig1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
 # Render fournit le port à écouter via la variable PORT (8080 par défaut en local).

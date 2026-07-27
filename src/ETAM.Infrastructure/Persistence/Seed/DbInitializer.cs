@@ -113,13 +113,25 @@ public static class DbInitializer
         //  CHANTIER D'EXEMPLE — NOSY BE
         //  Marché 150 M = bénéfice 80 M + budget projet 70 M (même compte bancaire).
         // =====================================================================
-        if (await context.Chantiers.AnyAsync(c => c.Code == "NOS-01"))
+        var d0 = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
+
+        var chantierExistant = await context.Chantiers.FirstOrDefaultAsync(c => c.Code == "NOS-01");
+        if (chantierExistant is not null)
         {
-            logger.LogInformation("Seed ETAM : déjà initialisé.");
+            // Le chantier est déjà là : on ne recrée rien, mais on rattrape le rapport de
+            // travail s'il manque (cas d'un premier démarrage où sa table n'existait pas encore).
+            if (!await context.RapportsTravail.AnyAsync(r => r.ChantierId == chantierExistant.Id))
+            {
+                context.RapportsTravail.Add(ConstruireRapportTravail(chantierExistant.Id, d0));
+                await context.SaveChangesAsync();
+                logger.LogInformation("Seed ETAM : rapport de travail créé (rattrapage).");
+            }
+            else
+            {
+                logger.LogInformation("Seed ETAM : déjà initialisé.");
+            }
             return;
         }
-
-        var d0 = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
 
         var nosyBe = new Chantier
         {
@@ -325,44 +337,47 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // --- Un rapport de travail hebdomadaire ---
-        context.RapportsTravail.Add(new RapportTravail
-        {
-            ChantierId = nosyBe.Id,
-            Numero = "01",
-            PeriodeDebut = d0,
-            PeriodeFin = d0.AddDays(6),
-            Lieu = "Nosy Be",
-            EntrepriseExecutante = "ETAM",
-            ConducteurTravaux = "RADO Andrianina",
-            EffectifCadres = 3,
-            EffectifOuvriers = 25,
-            HoraireMatin = "07h - 11h30",
-            HoraireApresMidi = "13h - 17h",
-            ConditionsMeteo = "Conditions favorables sur toute la période.",
-            Statut = StatutRapportTravail.Valide,
-            SoumisPar = "chef@etam.mg", DateSoumission = d0.AddDays(7),
-            ValideParId = "admin@etam.mg", DateValidation = d0.AddDays(8),
-            ResumeSuiviPlanning = "Semaine 1 conforme au planning : implantation, terrassement et fondations de la zone A.",
-            ProblemesRencontres = "Aucun problème majeur.",
-            Suggestions = "Prévoir un stock tampon de ciment pour éviter les ruptures.",
-            LignesAvancement = new List<RapportTravailAvancementLigne>
-            {
-                new() { Zone = "Zone A", TravauxRealises = "Implantation et terrassement", NiveauAvancement = "100 %", Observations = "Terminé" },
-                new() { Zone = "Zone A", TravauxRealises = "Fondations", NiveauAvancement = "80 %", Observations = "Reste le séchage" }
-            },
-            LignesMateriaux = new List<RapportTravailMateriauLigne>
-            {
-                new() { Materiau = "Ciment", Unite = "t", StockInitial = 0, Entree = 10, QuantiteUtilisee = 6, StockRestant = 4 },
-                new() { Materiau = "Fer à béton Ø10", Unite = "barre", StockInitial = 0, Entree = 120, QuantiteUtilisee = 45, StockRestant = 75 }
-            },
-            LignesEquipements = new List<RapportTravailEquipementLigne>
-            {
-                new() { Equipement = "01 bétonnière 500L", Etat = "Bon", Observation = "Entretien à jour" },
-                new() { Equipement = "01 groupe électrogène", Etat = "Bon", Observation = "Rien à signaler" }
-            }
-        });
+        context.RapportsTravail.Add(ConstruireRapportTravail(nosyBe.Id, d0));
         await context.SaveChangesAsync();
 
         logger.LogInformation("Seed ETAM terminé : chantier NOSY BE créé.");
     }
+
+    /// <summary>Rapport de travail d'exemple (extrait pour pouvoir être créé en rattrapage).</summary>
+    private static RapportTravail ConstruireRapportTravail(long chantierId, DateTime d0) => new()
+    {
+        ChantierId = chantierId,
+        Numero = "01",
+        PeriodeDebut = d0,
+        PeriodeFin = d0.AddDays(6),
+        Lieu = "Nosy Be",
+        EntrepriseExecutante = "ETAM",
+        ConducteurTravaux = "RADO Andrianina",
+        EffectifCadres = 3,
+        EffectifOuvriers = 25,
+        HoraireMatin = "07h - 11h30",
+        HoraireApresMidi = "13h - 17h",
+        ConditionsMeteo = "Conditions favorables sur toute la période.",
+        Statut = StatutRapportTravail.Valide,
+        SoumisPar = "chef@etam.mg", DateSoumission = d0.AddDays(7),
+        ValideParId = "admin@etam.mg", DateValidation = d0.AddDays(8),
+        ResumeSuiviPlanning = "Semaine 1 conforme au planning : implantation, terrassement et fondations de la zone A.",
+        ProblemesRencontres = "Aucun problème majeur.",
+        Suggestions = "Prévoir un stock tampon de ciment pour éviter les ruptures.",
+        LignesAvancement = new List<RapportTravailAvancementLigne>
+        {
+            new() { Zone = "Zone A", TravauxRealises = "Implantation et terrassement", NiveauAvancement = "100 %", Observations = "Terminé" },
+            new() { Zone = "Zone A", TravauxRealises = "Fondations", NiveauAvancement = "80 %", Observations = "Reste le séchage" }
+        },
+        LignesMateriaux = new List<RapportTravailMateriauLigne>
+        {
+            new() { Materiau = "Ciment", Unite = "t", StockInitial = 0, Entree = 10, QuantiteUtilisee = 6, StockRestant = 4 },
+            new() { Materiau = "Fer à béton Ø10", Unite = "barre", StockInitial = 0, Entree = 120, QuantiteUtilisee = 45, StockRestant = 75 }
+        },
+        LignesEquipements = new List<RapportTravailEquipementLigne>
+        {
+            new() { Equipement = "01 bétonnière 500L", Etat = "Bon", Observation = "Entretien à jour" },
+            new() { Equipement = "01 groupe électrogène", Etat = "Bon", Observation = "Rien à signaler" }
+        }
+    };
 }
