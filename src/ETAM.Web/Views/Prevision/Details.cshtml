@@ -25,12 +25,26 @@
             </div>
             <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>
             <table class="table table-sm align-middle">
-                <thead><tr><th>Désignation</th><th>Catégorie</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th></tr></thead>
+                <thead><tr><th>Désignation</th><th>Poste prévu</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th></tr></thead>
                 <tbody>
                 @foreach (var l in Model.Lignes)
                 {
                     <tr>
-                        <td>@l.Designation</td><td class="small text-muted">@l.Categorie</td>
+                        <td>@l.Designation<div class="small text-muted">@l.Categorie</div></td>
+                        <td class="small">
+                            @if (l.PrevisionGlobaleLigne is not null)
+                            {
+                                var env = l.PrevisionGlobaleLigne.Quantite * l.PrevisionGlobaleLigne.PrixUnitaire;
+                                <span class="fw-semibold">@l.PrevisionGlobaleLigne.Rubrique</span>
+                                <div class="text-muted">
+                                    @l.PrevisionGlobaleLigne.Designation · enveloppe @env.ToString("N0")
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Non rattaché</span>
+                            }
+                        </td>
                         <td><span class="badge @(l.TypeBudget == TypeBudget.Compte ? "bg-primary" : "bg-success")">@l.TypeBudget</span></td>
                         <td class="text-end">@l.Quantite.ToString("N2")</td>
                         <td class="text-end">@l.PrixUnitaireEstime.ToString("N0")</td>

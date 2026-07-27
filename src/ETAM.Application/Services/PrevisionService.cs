@@ -57,6 +57,7 @@ public class PrevisionService : IPrevisionService
                 TypeBudget = l.TypeBudget,
                 MateriauId = l.MateriauId,
                 DetteFournisseurId = l.DetteFournisseurId,
+                PrevisionGlobaleLigneId = l.PrevisionGlobaleLigneId,
                 Quantite = l.Quantite,
                 PrixUnitaireEstime = l.PrixUnitaireEstime,
                 Observation = l.Observation

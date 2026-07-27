@@ -126,10 +126,24 @@ public static class DbInitializer
                 await context.SaveChangesAsync();
                 logger.LogInformation("Seed ETAM : rapport de travail créé (rattrapage).");
             }
-            else
+
+            // Rattrapage : la rubrique Transport manquait, le plan ne couvrait donc pas
+            // la totalité du budget projet (55 160 000 au lieu de 70 000 000).
+            var pgExistante = await context.PrevisionsGlobales
+                .Include(p => p.Lignes)
+                .FirstOrDefaultAsync(p => p.ChantierId == chantierExistant.Id);
+            if (pgExistante is not null && !pgExistante.Lignes.Any(l => l.Rubrique == "Transport"))
             {
-                logger.LogInformation("Seed ETAM : déjà initialisé.");
+                context.PrevisionsGlobalesLignes.AddRange(
+                    new PrevisionGlobaleLigne { PrevisionGlobaleId = pgExistante.Id, Rubrique = "Transport",
+                        Designation = "Location camion", Unite = "mois", Quantite = 5, PrixUnitaire = 2_000_000m },
+                    new PrevisionGlobaleLigne { PrevisionGlobaleId = pgExistante.Id, Rubrique = "Transport",
+                        Designation = "Carburant", Unite = "forfait", Quantite = 1, PrixUnitaire = 4_840_000m });
+                await context.SaveChangesAsync();
+                logger.LogInformation("Seed ETAM : rubrique Transport ajoutée (rattrapage).");
             }
+
+            logger.LogInformation("Seed ETAM : déjà initialisé.");
             return;
         }
 
@@ -205,7 +219,11 @@ public static class DbInitializer
                 new() { Rubrique = "Main d'œuvre", Designation = "Peintre",     Unite = "forfait", Quantite = 1, PrixUnitaire = 1_000_000m },
                 // Imprévus — 5 000 000
                 new() { Rubrique = "Imprévus", Designation = "Santé / hospitalisation", Unite = "forfait", Quantite = 1, PrixUnitaire = 3_000_000m },
-                new() { Rubrique = "Imprévus", Designation = "Social et divers",        Unite = "forfait", Quantite = 1, PrixUnitaire = 2_000_000m }
+                new() { Rubrique = "Imprévus", Designation = "Social et divers",        Unite = "forfait", Quantite = 1, PrixUnitaire = 2_000_000m },
+                // Transport — 14 840 000 : complète le plan pour atteindre exactement
+                // le budget projet de 70 000 000 Ar (marché 150 M − bénéfice 80 M).
+                new() { Rubrique = "Transport", Designation = "Location camion", Unite = "mois",    Quantite = 5, PrixUnitaire = 2_000_000m },
+                new() { Rubrique = "Transport", Designation = "Carburant",       Unite = "forfait", Quantite = 1, PrixUnitaire = 4_840_000m }
             }
         };
         context.PrevisionsGlobales.Add(previsionGlobale);

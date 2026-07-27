@@ -39,7 +39,7 @@ public class PrevisionController : Controller
     {
         var prevision = await _uow.Previsions.Query().AsNoTracking()
             .Include(p => p.Chantier)
-            .Include(p => p.Lignes)
+            .Include(p => p.Lignes).ThenInclude(l => l.PrevisionGlobaleLigne)
             .FirstOrDefaultAsync(p => p.Id == id, ct);
         if (prevision is null) return NotFound();
 
@@ -61,7 +61,51 @@ public class PrevisionController : Controller
         await ChargerDettesAsync(ct);
         await ChargerCatalogueAsync(ct);
         await ChargerBlocagesAsync(ct);
+        await ChargerPostesGlobauxAsync(ct);
         return View(new PrevisionCreateDto());
+    }
+
+    /// <summary>
+    /// Charge les postes des prévisions globales actives (toutes chantiers confondus),
+    /// avec l'enveloppe prévue, le montant déjà consommé et le reste. La vue filtre
+    /// ensuite selon le chantier choisi.
+    /// </summary>
+    private async Task ChargerPostesGlobauxAsync(CancellationToken ct)
+    {
+        var lignes = await _uow.PrevisionsGlobalesLignes.Query().AsNoTracking()
+            .Include(l => l.PrevisionGlobale)
+            .Where(l => l.PrevisionGlobale.Statut == StatutPrevisionGlobale.ValideeAdministrateur
+                     || l.PrevisionGlobale.Statut == StatutPrevisionGlobale.MiseEnBanque)
+            .ToListAsync(ct);
+
+        var ids = lignes.Select(l => l.Id).ToList();
+
+        // Consommé = somme des lignes de prévisions engagées, rattachées à ce poste.
+        var consomme = ids.Count == 0
+            ? new Dictionary<long, decimal>()
+            : await _uow.PrevisionLignes.Query().AsNoTracking()
+                .Where(pl => pl.PrevisionGlobaleLigneId != null
+                          && ids.Contains(pl.PrevisionGlobaleLigneId.Value)
+                          && (pl.PrevisionJournaliere.Statut == StatutPrevision.ValideeAdministrateur
+                           || pl.PrevisionJournaliere.Statut == StatutPrevision.Executee
+                           || pl.PrevisionJournaliere.Statut == StatutPrevision.RapportSoumis
+                           || pl.PrevisionJournaliere.Statut == StatutPrevision.Cloturee))
+                .GroupBy(pl => pl.PrevisionGlobaleLigneId!.Value)
+                .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Quantite * x.PrixUnitaireEstime) })
+                .ToDictionaryAsync(x => x.Id, x => x.Total, ct);
+
+        ViewBag.PostesGlobaux = lignes
+            .Select(l => new ETAM.Application.DTOs.PosteGlobalDto
+            {
+                Id = l.Id,
+                ChantierId = l.PrevisionGlobale.ChantierId,
+                Rubrique = l.Rubrique,
+                Designation = l.Designation,
+                Enveloppe = l.Quantite * l.PrixUnitaire,
+                Consomme = consomme.TryGetValue(l.Id, out var c) ? c : 0m
+            })
+            .OrderBy(p => p.Rubrique).ThenBy(p => p.Designation)
+            .ToList();
     }
 
     /// <summary>
@@ -123,6 +167,7 @@ public class PrevisionController : Controller
             await ChargerDettesAsync(ct);
             await ChargerCatalogueAsync(ct);
             await ChargerBlocagesAsync(ct);
+            await ChargerPostesGlobauxAsync(ct);
             return View(dto);
         }
         await AppliquerPrixCatalogueAsync(dto, ct);
@@ -318,6 +363,7 @@ public class PrevisionController : Controller
         ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
         await ChargerDettesAsync(ct);
         await ChargerCatalogueAsync(ct);
+        await ChargerPostesGlobauxAsync(ct);
         ViewBag.PrevId = id;
         var dto = new PrevisionCreateDto
         {
@@ -328,6 +374,7 @@ public class PrevisionController : Controller
             {
                 Designation = l.Designation, Categorie = l.Categorie, TypeBudget = l.TypeBudget,
                 MateriauId = l.MateriauId, DetteFournisseurId = l.DetteFournisseurId,
+                PrevisionGlobaleLigneId = l.PrevisionGlobaleLigneId,
                 Quantite = l.Quantite, PrixUnitaireEstime = l.PrixUnitaireEstime, Observation = l.Observation
             }).ToList()
         };
@@ -355,6 +402,7 @@ public class PrevisionController : Controller
             ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
             await ChargerDettesAsync(ct);
             await ChargerCatalogueAsync(ct);
+            await ChargerPostesGlobauxAsync(ct);
             ViewBag.PrevId = id;
             return View(dto);
         }
@@ -371,6 +419,7 @@ public class PrevisionController : Controller
         {
             Designation = l.Designation, Categorie = l.Categorie, TypeBudget = l.TypeBudget,
             MateriauId = l.MateriauId, DetteFournisseurId = l.DetteFournisseurId,
+            PrevisionGlobaleLigneId = l.PrevisionGlobaleLigneId,
             Quantite = l.Quantite, PrixUnitaireEstime = l.PrixUnitaireEstime, Observation = l.Observation
         }).ToList();
 

@@ -49,10 +49,12 @@
     <h6 class="fw-bold">Lignes</h6>
     <p class="small text-muted">Choisissez une désignation du catalogue : la catégorie et le prix se remplissent automatiquement. <strong>Le prix d'un article du catalogue est verrouillé</strong> (prix de référence). Pour un prix libre, saisissez une désignation hors catalogue.</p>
     <p class="small text-muted">Pour un remboursement de dette, choisissez la dette dans la dernière colonne : elle diminuera automatiquement à l'exécution.</p>
+    <p class="small text-muted"><strong>Poste prévu</strong> : rattachez chaque ligne à son enveloppe de la prévision globale. C'est ce qui permet de suivre la consommation du budget et de déclencher les alertes.</p>
     <table class="table table-sm align-middle" id="tblLignes">
         <thead><tr>
             <th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th>
-            <th>Prix unit. estimé</th><th>Dette (remboursement)</th><th></th>
+            <th>Prix unit. estimé</th><th style="min-width:230px">Poste prévu (enveloppe)</th>
+            <th>Dette</th><th></th>
         </tr></thead>
         <tbody></tbody>
     </table>
@@ -72,6 +74,14 @@
         <option value="@d.Id">@d.Fournisseur?.Nom - @d.Libelle (reste @d.SoldeRestant.ToString("N0"))</option>
     }
 </select>
+
+@* Postes de la prévision globale, tous chantiers : le JS filtre selon le chantier choisi. *@
+<script id="postesGlobaux" type="application/json">
+    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        (ViewBag.PostesGlobaux as IEnumerable<ETAM.Application.DTOs.PosteGlobalDto>
+            ?? Enumerable.Empty<ETAM.Application.DTOs.PosteGlobalDto>())
+        .Select(p => new { p.Id, p.ChantierId, p.Rubrique, p.Designation, p.Enveloppe, p.Consomme, p.Reste })))
+</script>
 
 @* Catalogue : désignations avec prix/catégorie (data-* lus par le JS pour le pré-remplissage) *@
 <datalist id="listeDesignations">
@@ -97,6 +107,12 @@
             <option value="0">Compte</option><option value="1">Matériel</option></select></td>
       <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm" value="1"></td>
       <td><input name="Lignes[${i}].PrixUnitaireEstime" type="number" step="0.01" class="form-control form-control-sm js-prix" value="0"></td>
+      <td>
+        <select name="Lignes[${i}].PrevisionGlobaleLigneId" class="form-select form-select-sm js-poste">
+          ${optionsPostes()}
+        </select>
+        <small class="js-reste text-muted"></small>
+      </td>
       <td><select name="Lignes[${i}].DetteFournisseurId" class="form-select form-select-sm">${detteOptions}</select></td>
       <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
@@ -105,6 +121,74 @@
   }
   document.getElementById('btnAdd').addEventListener('click', row);
   document.addEventListener('click', e=>{ if(e.target.closest('.js-del')) e.target.closest('tr').remove(); });
+
+  // ---- Postes de la prévision globale ----
+  const tousPostes = JSON.parse(document.getElementById('postesGlobaux').textContent.trim() || '[]');
+  const selChantier = document.querySelector('[name="ChantierId"]');
+  const fmt = v => new Intl.NumberFormat('fr-FR').format(Math.round(v || 0));
+
+  function postesDuChantier(){
+    const id = parseInt(selChantier?.value || '0', 10);
+    return tousPostes.filter(p => p.ChantierId === id);
+  }
+
+  // Options du menu déroulant, regroupées par rubrique.
+  function optionsPostes(){
+    const liste = postesDuChantier();
+    if(!liste.length) return '<option value="">— choisir d\'abord un chantier —</option>';
+    let html = '<option value="">— non rattaché —</option>';
+    let rubriqueCourante = null;
+    liste.forEach(p => {
+      if(p.Rubrique !== rubriqueCourante){
+        if(rubriqueCourante !== null) html += '</optgroup>';
+        html += `<optgroup label="${p.Rubrique}">`;
+        rubriqueCourante = p.Rubrique;
+      }
+      html += `<option value="${p.Id}" data-reste="${p.Reste}" data-env="${p.Enveloppe}">`
+            + `${p.Designation} — reste ${fmt(p.Reste)}</option>`;
+    });
+    return html + '</optgroup>';
+  }
+
+  // Reconstruit les listes quand on change de chantier (les postes en dépendent).
+  function rafraichirPostes(){
+    document.querySelectorAll('.js-poste').forEach(sel => {
+      const garde = sel.value;
+      sel.innerHTML = optionsPostes();
+      if([...sel.options].some(o => o.value === garde)) sel.value = garde;
+      majReste(sel);
+    });
+  }
+  selChantier?.addEventListener('change', rafraichirPostes);
+
+  // Affiche l'enveloppe restante et alerte si la ligne la dépasse.
+  function majReste(sel){
+    const tr = sel.closest('tr');
+    const info = tr.querySelector('.js-reste');
+    const opt = sel.options[sel.selectedIndex];
+    if(!opt || !opt.value){ info.textContent = ''; info.className = 'js-reste text-muted'; return; }
+
+    const reste = parseFloat(opt.getAttribute('data-reste')) || 0;
+    const q = parseFloat(tr.querySelector('[name$=".Quantite"]').value) || 0;
+    const p = parseFloat(tr.querySelector('.js-prix').value) || 0;
+    const montant = q * p;
+
+    if(montant > reste){
+      info.textContent = `Dépasse l'enveloppe de ${fmt(montant - reste)} Ar`;
+      info.className = 'js-reste text-danger fw-semibold';
+    } else {
+      info.textContent = `Reste après cette ligne : ${fmt(reste - montant)} Ar`;
+      info.className = 'js-reste text-success';
+    }
+  }
+
+  document.addEventListener('change', e => { if(e.target.classList.contains('js-poste')) majReste(e.target); });
+  document.addEventListener('input', e => {
+    const tr = e.target.closest('tr');
+    if(!tr) return;
+    const sel = tr.querySelector('.js-poste');
+    if(sel && (e.target.classList.contains('js-prix') || e.target.name?.endsWith('.Quantite'))) majReste(sel);
+  });
 
   // Pré-remplissage depuis le catalogue. IMPORTANT : un article du catalogue impose son prix,
   // le champ devient alors non modifiable (prix de référence verrouillé).

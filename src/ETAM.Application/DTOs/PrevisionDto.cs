@@ -43,7 +43,26 @@ public class PrevisionLigneCreateDto
     public TypeBudget TypeBudget { get; set; }
     public long? MateriauId { get; set; }
     public long? DetteFournisseurId { get; set; }
+
+    /// <summary>Poste de la prévision globale sur lequel cette dépense est imputée.</summary>
+    public long? PrevisionGlobaleLigneId { get; set; }
+
     public decimal Quantite { get; set; }
     public decimal PrixUnitaireEstime { get; set; }
     public string? Observation { get; set; }
+}
+
+/// <summary>
+/// Poste de la prévision globale proposé à la saisie : enveloppe prévue,
+/// montant déjà consommé et reste disponible.
+/// </summary>
+public class PosteGlobalDto
+{
+    public long Id { get; set; }
+    public long ChantierId { get; set; }
+    public string Rubrique { get; set; } = null!;
+    public string Designation { get; set; } = null!;
+    public decimal Enveloppe { get; set; }
+    public decimal Consomme { get; set; }
+    public decimal Reste => Enveloppe - Consomme;
 }
