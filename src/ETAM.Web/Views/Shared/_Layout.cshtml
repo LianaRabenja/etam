@@ -76,6 +76,8 @@
 
             @if (isAdmin || voitBanques) { <li class="section">Trésorerie</li> }
             @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> Banques</a></li> }
+
+            @if (isAdmin) { <li class="section">Tiers</li> }
             @if (isAdmin) { <li><a class="@Active("Fournisseurs")" href="/Fournisseurs/Index"><i class="fa-solid fa-truck-field"></i> Fournisseurs</a></li> }
             @if (isAdmin) { <li><a class="@Active("Dettes")" href="/Dettes/Index"><i class="fa-solid fa-file-invoice-dollar"></i> Dettes fournisseurs</a></li> }
 
