@@ -1,7 +1,7 @@
 @model List<ETAM.Domain.Entities.Materiau>
 @{ ViewData["Title"] = "Stock des matériaux"; }
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <p class="text-muted mb-0">@Model.Count article(s) en stock — rattachés directement aux chantiers. « Entrées » = reçu, « Sorties » = utilisé.</p>
+    <p class="text-muted mb-0">@Model.Count article(s) en stock</p>
     @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier"))
     {
         <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau matériau</a>

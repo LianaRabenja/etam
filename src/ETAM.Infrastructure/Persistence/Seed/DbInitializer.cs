@@ -143,6 +143,48 @@ public static class DbInitializer
                 logger.LogInformation("Seed ETAM : rubrique Transport ajoutée (rattrapage).");
             }
 
+            // Rattrapage : le flux bancaire initial était faux — un retrait direct était
+            // enregistré au lieu d'un transfert vers le Budget Matériel, et rien n'était
+            // réellement transféré. On rétablit le flux correct.
+            if (chantierExistant.MaterielTransfere <= 0)
+            {
+                var compteExistant = await context.ComptesBancaires
+                    .FirstOrDefaultAsync(c => c.ChantierId == chantierExistant.Id
+                                           && c.Type == TypeCompteBancaire.Chantier);
+                if (compteExistant is not null)
+                {
+                    // Annule le retrait erroné « Prévision journalière ».
+                    var retraitErrone = await context.MouvementsBancaires.FirstOrDefaultAsync(
+                        m => m.CompteBancaireId == compteExistant.Id
+                          && m.Reference == "PREV-NOS-01-20260728");
+                    if (retraitErrone is not null)
+                    {
+                        retraitErrone.IsDeleted = true;
+                        context.MouvementsBancaires.Update(retraitErrone);
+                    }
+
+                    // Enregistre le transfert vers le Budget Matériel.
+                    context.MouvementsBancaires.Add(new MouvementBancaire
+                    {
+                        CompteBancaireId = compteExistant.Id, ChantierId = chantierExistant.Id,
+                        Date = d0.AddDays(2), Type = TypeMouvementBancaire.Virement,
+                        Montant = 40_000_000m,
+                        Motif = "Transfert vers le Budget Matériel — NOSY BE",
+                        Reference = "TRANSF-NOS-01", EstValide = true
+                    });
+
+                    compteExistant.Solde = 150_000_000m - 40_000_000m;
+                    context.ComptesBancaires.Update(compteExistant);
+
+                    chantierExistant.MaterielTransfere = 40_000_000m;
+                    chantierExistant.Consommation = 1_140_000m;
+                    context.Chantiers.Update(chantierExistant);
+
+                    await context.SaveChangesAsync();
+                    logger.LogInformation("Seed ETAM : flux bancaire corrigé (rattrapage transfert).");
+                }
+            }
+
             logger.LogInformation("Seed ETAM : déjà initialisé.");
             return;
         }
@@ -185,12 +227,21 @@ public static class DbInitializer
             new MouvementBancaire { CompteBancaireId = compte.Id, ChantierId = nosyBe.Id, Date = d0,
                 Type = TypeMouvementBancaire.Depot, Montant = 150_000_000m,
                 Motif = "Encaissement du marché — NOSY BE", Reference = "MARCHE-NOS-01", EstValide = true },
-            new MouvementBancaire { CompteBancaireId = compte.Id, ChantierId = nosyBe.Id, Date = d0.AddDays(8),
-                Type = TypeMouvementBancaire.Retrait, Montant = 1_740_000m,
-                Motif = "Prévision journalière du 28/07/2026", Reference = "PREV-NOS-01-20260728", EstValide = true }
+            // Transfert vers le Budget Matériel du chantier : c'est CE mouvement qui rend
+            // l'argent utilisable par les prévisions (une prévision ne débite pas la banque
+            // directement, elle consomme le budget préalablement transféré).
+            new MouvementBancaire { CompteBancaireId = compte.Id, ChantierId = nosyBe.Id, Date = d0.AddDays(2),
+                Type = TypeMouvementBancaire.Virement, Montant = 40_000_000m,
+                Motif = "Transfert vers le Budget Matériel — NOSY BE",
+                Reference = "TRANSF-NOS-01", EstValide = true }
         );
-        compte.Solde = 150_000_000m - 1_740_000m;
+        compte.Solde = 150_000_000m - 40_000_000m;
         context.ComptesBancaires.Update(compte);
+
+        // Le chantier dispose donc réellement de 40 000 000 Ar de Budget Matériel.
+        nosyBe.MaterielTransfere = 40_000_000m;
+        nosyBe.Consommation = 1_140_000m;   // consommé par la prévision du 28/07 (ligne Matériel)
+        context.Chantiers.Update(nosyBe);
         await context.SaveChangesAsync();
 
         // --- Prévision globale du projet (70 M) ---

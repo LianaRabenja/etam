@@ -181,14 +181,27 @@ public class PrevisionService : IPrevisionService
                 }
                 else // Matériel
                 {
-                    var depassement = ligne.Total - chantier.BudgetMaterielRestant;
+                    // On contrôle l'argent RÉELLEMENT transféré depuis la banque du chantier
+                    // (MaterielDisponible = transféré − consommé), et non le simple plafond :
+                    // sans transfert préalable, il n'y a pas d'argent à dépenser.
+                    if (chantier.MaterielTransfere <= 0)
+                    {
+                        await _uow.RollbackAsync(ct);
+                        return Result.Failure(
+                            $"Aucun transfert vers le Budget Matériel du chantier {chantier.Nom}. " +
+                            "Effectuez d'abord un transfert depuis la banque (menu Banques).");
+                    }
+
+                    var depassement = ligne.Total - chantier.MaterielDisponible;
                     if (depassement > 0)
                     {
                         if (!utiliserReserve)
                         {
                             await _uow.RollbackAsync(ct);
                             return Result.Failure(
-                                $"Budget Matériel du chantier {chantier.Nom} dépassé de {depassement:N0} Ar. Réserve requise.");
+                                $"Budget Matériel disponible insuffisant sur {chantier.Nom} : il manque {depassement:N0} Ar. " +
+                                $"Transféré {chantier.MaterielTransfere:N0} Ar, déjà consommé {chantier.Consommation:N0} Ar. " +
+                                "Effectuez un transfert supplémentaire ou utilisez la réserve.");
                         }
                         if (depassement > chantier.ReserveRestante)
                         {
@@ -196,7 +209,7 @@ public class PrevisionService : IPrevisionService
                             return Result.Failure($"Réserve du chantier insuffisante ({chantier.ReserveRestante:N0} Ar).");
                         }
                         chantier.ReserveUtilisee += depassement;
-                        chantier.Consommation = chantier.BudgetMateriel;
+                        chantier.Consommation += ligne.Total - depassement;
                     }
                     else
                     {

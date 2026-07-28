@@ -15,6 +15,20 @@
                      && Model.Statut != StatutPrevision.Executee
                      && Model.Statut != StatutPrevision.RapportSoumis
                      && Model.Statut != StatutPrevision.Cloturee;
+
+    // Libellés lisibles : sans cela l'écran affiche le nom brut de l'énumération.
+    string LibelleStatut(StatutPrevision s) => s switch
+    {
+        StatutPrevision.Brouillon => "Brouillon",
+        StatutPrevision.Soumise => "Soumise",
+        StatutPrevision.ValideeResponsableFinancier => "Validée Correspondant",
+        StatutPrevision.ValideeAdministrateur => "Validée Administrateur",
+        StatutPrevision.Executee => "Exécutée",
+        StatutPrevision.Refusee => "Refusée",
+        StatutPrevision.RapportSoumis => "Compte rendu à réceptionner",
+        StatutPrevision.Cloturee => "Clôturée",
+        _ => s.ToString()
+    };
 }
 <div class="row g-4">
     <div class="col-lg-8">
@@ -27,7 +41,7 @@
                         <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-light"><i class="fa-solid fa-pen me-1"></i> Modifier</a>
                     }
                     <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Prevision", "ExportDetail", Model.Id)' />
-                    <span class="badge bg-secondary align-self-start">@Model.Statut</span>
+                    <span class="badge bg-secondary align-self-start">@LibelleStatut(Model.Statut)</span>
                 </div>
             </div>
             <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>
@@ -43,8 +57,8 @@
                             {
                                 var env = l.PrevisionGlobaleLigne.Quantite * l.PrevisionGlobaleLigne.PrixUnitaire;
                                 <span class="fw-semibold">@l.PrevisionGlobaleLigne.Rubrique</span>
-                                <div class="text-muted">
-                                    @l.PrevisionGlobaleLigne.Designation · enveloppe @env.ToString("N0")
+                                <div class="text-muted" title="Enveloppe : @env.ToString("N0") Ar">
+                                    @l.PrevisionGlobaleLigne.Designation
                                 </div>
                             }
                             else
@@ -84,16 +98,11 @@
                 </tbody>
                 <tfoot><tr><th colspan="5" class="text-end">Total</th><th class="text-end">@Model.Total.ToString("N0") Ar</th><th></th></tr></tfoot>
             </table>
-            @if (resteApres.Any())
+            @if (resteApres.Any() && estProjection)
             {
-                <p class="small text-muted mb-1">
+                <p class="small text-warning mb-1">
                     <i class="fa-solid fa-circle-info me-1"></i>
-                    « Reste sur l'enveloppe » = ce qu'il reste sur le poste prévu après cette ligne,
-                    en tenant compte de toutes les prévisions déjà engagées sur ce poste.
-                    @if (estProjection)
-                    {
-                        <strong class="text-warning">Projection : cette prévision n'est pas encore validée.</strong>
-                    }
+                    Reste indicatif : cette prévision n'est pas encore validée.
                 </p>
             }
             @if (!string.IsNullOrEmpty(Model.Observation)) { <p class="small text-muted mb-0">@Model.Observation</p> }

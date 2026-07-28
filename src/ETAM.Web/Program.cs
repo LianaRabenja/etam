@@ -16,6 +16,19 @@ using Serilog;
 // Licence QuestPDF (gratuite pour usage Community / petites entreprises).
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
+// ---------- Format des nombres et des dates ----------
+// Culture française (séparateur de milliers = espace : « 6 460 000 »), MAIS on conserve
+// le point comme séparateur décimal : les champs <input type="number"> envoient toujours
+// « 1.5 », qui serait rejeté par le format français standard (« 1,5 »).
+var cultureEtam = (System.Globalization.CultureInfo)
+    System.Globalization.CultureInfo.GetCultureInfo("fr-FR").Clone();
+cultureEtam.NumberFormat.NumberGroupSeparator = " ";
+cultureEtam.NumberFormat.NumberDecimalSeparator = ".";
+cultureEtam.NumberFormat.CurrencyGroupSeparator = " ";
+cultureEtam.NumberFormat.CurrencyDecimalSeparator = ".";
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = cultureEtam;
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = cultureEtam;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- Serilog ----------
@@ -107,6 +120,14 @@ var app = builder.Build();
 
 // Doit être appelé AVANT tout le reste du pipeline.
 app.UseForwardedHeaders();
+
+// Applique la culture ETAM à chaque requête (affichage ET lecture des formulaires).
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new Microsoft.AspNetCore.Localization.RequestCulture(cultureEtam),
+    SupportedCultures = new List<System.Globalization.CultureInfo> { cultureEtam },
+    SupportedUICultures = new List<System.Globalization.CultureInfo> { cultureEtam }
+});
 
 // ---------- Pipeline ----------
 if (!app.Environment.IsDevelopment())
