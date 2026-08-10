@@ -42,6 +42,7 @@ public class Chantier : BaseEntity
     // --- Navigation ---
     public ICollection<Materiau> Materiaux { get; set; } = new List<Materiau>();
     public ICollection<PrevisionJournaliere> Previsions { get; set; } = new List<PrevisionJournaliere>();
+    public ICollection<PrevisionMensuelle> PrevisionsMensuelles { get; set; } = new List<PrevisionMensuelle>();
     public ICollection<Depense> Depenses { get; set; } = new List<Depense>();
 
     // --- Propriétés calculées (non mappées) ---

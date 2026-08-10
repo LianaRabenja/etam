@@ -1,0 +1,188 @@
+@model ETAM.Domain.Entities.PrevisionMensuelle
+@using ETAM.Domain.Enums
+@using ETAM.Web.Controllers
+@{
+    ViewData["Title"] = "Enveloppe de " + Model.Libelle;
+    var journees = ViewBag.Journees as List<JourneeDuMois> ?? new List<JourneeDuMois>();
+    var pct = Model.PourcentageConsomme;
+}
+
+@functions {
+    string LibelleStatutJour(StatutPrevision s) => s switch
+    {
+        StatutPrevision.Brouillon => "Brouillon",
+        StatutPrevision.Soumise => "Soumise",
+        StatutPrevision.ValideeResponsableFinancier => "Validée Finance",
+        StatutPrevision.ValideeAdministrateur => "Validée Direction",
+        StatutPrevision.Executee => "Ouverte",
+        StatutPrevision.Refusee => "Refusée",
+        StatutPrevision.RapportSoumis => "Compte rendu à réceptionner",
+        StatutPrevision.Cloturee => "Clôturée",
+        _ => s.ToString()
+    };
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h5 class="mb-0">@Model.Chantier?.Nom — @Model.Libelle</h5>
+        <small class="text-muted">@Model.Reference</small>
+    </div>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Retour</a>
+</div>
+
+<!-- Comment se forme l'enveloppe du mois -->
+<div class="etam-card p-3 mb-3">
+    <div class="row text-center g-3">
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Prévu pour le mois</div>
+            <div class="fs-5 fw-semibold">@Model.MontantPrevu.ToString("N0") Ar</div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Reste du mois précédent</div>
+            <div class="fs-5 fw-semibold @(Model.ReportMoisPrecedent > 0 ? "text-info" : "text-muted")">
+                @(Model.ReportMoisPrecedent > 0 ? "+ " + Model.ReportMoisPrecedent.ToString("N0") + " Ar" : "aucun")
+            </div>
+            @if (Model.PrevisionMensuellePrecedente is not null)
+            {
+                <small class="text-muted">venant de @Model.PrevisionMensuellePrecedente.Libelle</small>
+            }
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Enveloppe disponible</div>
+            <div class="fs-4 fw-bold text-primary">@Model.EnveloppeTotale.ToString("N0") Ar</div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Reste à dépenser</div>
+            <div class="fs-4 fw-bold @(Model.Disponible <= 0 ? "text-danger" : "text-success")">
+                @Model.Disponible.ToString("N0") Ar
+            </div>
+        </div>
+    </div>
+
+    <div class="progress mt-3" style="height:10px">
+        <div class="progress-bar @(pct >= 100 ? "bg-danger" : pct >= 50 ? "bg-warning" : "bg-success")"
+             role="progressbar" style="width:@(Math.Min(pct, 100).ToString("F0"))%"></div>
+    </div>
+    <div class="d-flex justify-content-between small text-muted mt-1">
+        <span>Décaissé : @Model.MontantConsomme.ToString("N0") Ar</span>
+        <span>@pct.ToString("F1") % de l'enveloppe</span>
+    </div>
+</div>
+
+@if (Model.Statut == StatutPrevisionMensuelle.Cloturee)
+{
+    <div class="alert alert-dark">
+        <strong>Mois clôturé le @Model.DateCloture?.ToString("dd/MM/yyyy").</strong>
+        Le reste de @Model.Disponible.ToString("N0") Ar a été reporté sur le mois suivant.
+    </div>
+}
+
+<!-- Actions -->
+@if (User.IsInRole("Administrateur"))
+{
+    <div class="etam-card p-3 mb-3 d-flex gap-2 flex-wrap">
+        @if (Model.Statut == StatutPrevisionMensuelle.Brouillon)
+        {
+            <form asp-action="Valider" asp-route-id="@Model.Id" method="post">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-success"><i class="fa-solid fa-check me-1"></i> Ouvrir l'enveloppe</button>
+            </form>
+            <form asp-action="Refuser" asp-route-id="@Model.Id" method="post" class="d-flex gap-2">
+                @Html.AntiForgeryToken()
+                <input name="motif" class="form-control" placeholder="Motif du refus" required />
+                <button class="btn btn-outline-danger">Refuser</button>
+            </form>
+        }
+        else if (Model.Statut == StatutPrevisionMensuelle.Validee)
+        {
+            <form asp-action="Cloturer" asp-route-id="@Model.Id" method="post"
+                  onsubmit="return confirm('Clôturer @Model.Libelle ? Le reste de @Model.Disponible.ToString("N0") Ar sera reporté sur le mois suivant.');">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-dark">
+                    <i class="fa-solid fa-lock me-1"></i> Clôturer le mois et reporter le reste
+                </button>
+            </form>
+        }
+    </div>
+}
+
+<!-- Répartition par rubrique -->
+@if (Model.Lignes.Any())
+{
+    <div class="etam-card p-3 mb-3">
+        <h6 class="mb-2">Répartition prévue</h6>
+        <table class="table table-sm">
+            <thead><tr><th>Rubrique</th><th class="text-end">Montant</th></tr></thead>
+            <tbody>
+            @foreach (var l in Model.Lignes.OrderByDescending(x => x.Montant))
+            {
+                <tr>
+                    <td>@l.Rubrique @(string.IsNullOrEmpty(l.Designation) ? "" : " — " + l.Designation)</td>
+                    <td class="text-end">@l.Montant.ToString("N0") Ar</td>
+                </tr>
+            }
+            </tbody>
+            <tfoot><tr class="fw-semibold">
+                <td>Total réparti</td><td class="text-end">@Model.TotalLignes.ToString("N0") Ar</td>
+            </tr></tfoot>
+        </table>
+    </div>
+}
+
+<!-- Les journées du mois -->
+<div class="etam-card p-3">
+    <h6 class="mb-2">Les journées de ce mois</h6>
+    <p class="text-muted small">
+        Le reste d'une journée s'ajoute au plafond de la journée suivante.
+    </p>
+
+    @if (!journees.Any())
+    {
+        <p class="text-muted mb-0">Aucune prévision journalière sur ce mois.</p>
+    }
+    else
+    {
+        <table class="table table-hover align-middle">
+            <thead><tr>
+                <th>Date</th><th>Référence</th>
+                <th class="text-end">Demandé</th>
+                <th class="text-end">Reporté de la veille</th>
+                <th class="text-end">Plafond du jour</th>
+                <th class="text-end">Décaissé</th>
+                <th class="text-end">Reste reporté</th>
+                <th>État</th><th></th>
+            </tr></thead>
+            <tbody>
+            @foreach (var j in journees)
+            {
+                <tr>
+                    <td>@j.Date.ToString("ddd dd/MM")</td>
+                    <td class="small text-muted">@j.Reference</td>
+                    <td class="text-end">@j.Demande.ToString("N0")</td>
+                    <td class="text-end @(j.ReportVeille > 0 ? "text-info" : "text-muted")">
+                        @(j.ReportVeille > 0 ? "+ " + j.ReportVeille.ToString("N0") : "—")
+                    </td>
+                    <td class="text-end fw-semibold">@j.Plafond.ToString("N0")</td>
+                    <td class="text-end">@j.Decaisse.ToString("N0")</td>
+                    <td class="text-end fw-semibold @(j.Reliquat > 0 ? "text-success" : "text-muted")">
+                        @j.Reliquat.ToString("N0")
+                    </td>
+                    <td>
+                        <span class="badge @(j.Statut == StatutPrevision.Cloturee ? "bg-dark" : j.Statut == StatutPrevision.Executee ? "bg-success" : "bg-secondary")">
+                            @LibelleStatutJour(j.Statut)
+                        </span>
+                        @if (j.Statut == StatutPrevision.Executee && j.DateAccuse is null)
+                        {
+                            <span class="badge bg-warning text-dark">Réception non signée</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        <a asp-controller="Prevision" asp-action="Details" asp-route-id="@j.Id"
+                           class="btn btn-sm btn-outline-primary">Voir</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>

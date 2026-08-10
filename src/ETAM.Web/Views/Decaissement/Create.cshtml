@@ -1,0 +1,143 @@
+@model ETAM.Application.Interfaces.DecaissementDto
+@using ETAM.Domain.Enums
+@{
+    var p = (ETAM.Domain.Entities.PrevisionJournaliere)ViewBag.Prevision;
+    ViewData["Title"] = "Décaissement";
+    var reliquat = p.PlafondDuJour - p.MontantDecaisse;
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h5 class="mb-0">Sortie d'argent</h5>
+        <small class="text-muted">@p.Chantier?.Nom — prévision du @p.DatePrevision.ToString("dd/MM/yyyy")</small>
+    </div>
+    <a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-outline-secondary btn-sm">
+        Retour
+    </a>
+</div>
+
+<!-- Ce qui reste à dépenser aujourd'hui -->
+<div class="etam-card p-3 mb-3">
+    <div class="row text-center g-3">
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Demandé aujourd'hui</div>
+            <div class="fs-6 fw-semibold">@p.Total.ToString("N0") Ar</div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Reporté de la veille</div>
+            <div class="fs-6 fw-semibold @(p.ReportVeille > 0 ? "text-info" : "text-muted")">
+                @(p.ReportVeille > 0 ? "+ " + p.ReportVeille.ToString("N0") + " Ar" : "aucun")
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Déjà sorti</div>
+            <div class="fs-6 fw-semibold">@p.MontantDecaisse.ToString("N0") Ar</div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="text-muted small">Reste disponible</div>
+            <div class="fs-4 fw-bold text-success">@reliquat.ToString("N0") Ar</div>
+        </div>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" class="etam-card p-4">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="PrevisionJournaliereId" value="@p.Id" />
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Montant (Ar)</label>
+            <input name="Montant" type="number" step="1" min="1" max="@reliquat.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                   class="form-control form-control-lg" placeholder="190000" required autofocus />
+            <div class="form-text">Maximum @reliquat.ToString("N0") Ar</div>
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">Bénéficiaire</label>
+            <input name="Beneficiaire" class="form-control" placeholder="Nom de la personne ou du fournisseur" required />
+            <div class="form-text">Qui a reçu l'argent.</div>
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">Date</label>
+            <input name="Date" type="date" class="form-control"
+                   value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
+        </div>
+
+        <div class="col-md-8">
+            <label class="form-label">Motif</label>
+            <input name="Motif" class="form-control" placeholder="Achat de 3 sacs de ciment" required />
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">Mode de paiement</label>
+            <select name="Mode" class="form-select">
+                <option value="@((int)ModePaiement.Especes)">Espèces</option>
+                <option value="@((int)ModePaiement.Cheque)">Chèque</option>
+                <option value="@((int)ModePaiement.Virement)">Virement</option>
+                <option value="@((int)ModePaiement.MobileMoney)">Mobile Money</option>
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Compte débité</label>
+            <select name="CompteBancaireId" class="form-select" required>
+                @foreach (var c in (ViewBag.Comptes as IEnumerable<ETAM.Web.Controllers.OptionCompte>)
+                                   ?? Enumerable.Empty<ETAM.Web.Controllers.OptionCompte>())
+                {
+                    <option value="@c.Id">@c.Libelle</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Budget imputé</label>
+            <select name="BudgetConcerne" class="form-select">
+                <option value="@((int)TypeBudget.Materiel)">Budget Matériel du chantier</option>
+                <option value="@((int)TypeBudget.Compte)">Budget Comptes de l'entreprise</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Référence</label>
+            <input name="Reference" class="form-control" placeholder="N° facture, n° chèque" />
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Ligne de la prévision réglée <span class="text-muted">(facultatif)</span></label>
+            <select name="PrevisionLigneId" class="form-select">
+                <option value="">— Non rattaché —</option>
+                @foreach (var l in p.Lignes.Where(x => !x.IsDeleted))
+                {
+                    <option value="@l.Id">@l.Designation — @l.Total.ToString("N0") Ar</option>
+                }
+            </select>
+            <div class="form-text">
+                Permet de sortir le stock et de suivre l'enveloppe du poste.
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Signature du bénéficiaire <span class="text-muted">(facultatif)</span></label>
+            <input name="AccuseNom" class="form-control" placeholder="Nom de celui qui reconnaît avoir reçu" />
+        </div>
+
+        <div class="col-12">
+            <label class="form-label">Observation</label>
+            <input name="Observation" class="form-control" />
+        </div>
+    </div>
+
+    <div class="alert alert-warning mt-4 mb-3">
+        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+        Cette opération sort réellement l'argent du compte. Elle ne pourra être annulée
+        que par un administrateur, et seulement avant la réception des travaux.
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Enregistrer le décaissement</button>
+        <a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-outline-secondary">
+            Annuler
+        </a>
+    </div>
+</form>

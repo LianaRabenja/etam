@@ -13,6 +13,10 @@ public interface IUnitOfWork : IDisposable
     IGenericRepository<MouvementMateriau> MouvementsMateriau { get; }
     IGenericRepository<PrevisionJournaliere> Previsions { get; }
     IGenericRepository<PrevisionLigne> PrevisionLignes { get; }
+    IGenericRepository<PrevisionMensuelle> PrevisionsMensuelles { get; }
+    IGenericRepository<PrevisionMensuelleLigne> PrevisionMensuelleLignes { get; }
+    IGenericRepository<Decaissement> Decaissements { get; }
+    IGenericRepository<PieceJointe> PiecesJointes { get; }
     IGenericRepository<PrevisionGlobale> PrevisionsGlobales { get; }
     IGenericRepository<PrevisionGlobaleLigne> PrevisionsGlobalesLignes { get; }
     IGenericRepository<Depense> Depenses { get; }

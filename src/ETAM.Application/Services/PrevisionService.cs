@@ -143,106 +143,95 @@ public class PrevisionService : IPrevisionService
     }
 
     /// <summary>
-    /// Exécution transactionnelle : impacte les budgets et les stocks.
+    /// Ouvre l'enveloppe de la journée.
+    ///
+    /// ATTENTION : cette opération ne sort PLUS d'argent de la banque et n'impute plus
+    /// les budgets. Elle se contente d'autoriser un plafond de dépense pour la journée,
+    /// en y ajoutant le reliquat non décaissé de la prévision précédente du même chantier.
+    /// L'argent ne bouge qu'au moment des décaissements (voir DecaissementService).
     /// </summary>
     public async Task<Result> ExecuterAsync(long id, bool utiliserReserve = false, CancellationToken ct = default)
     {
         var p = await ChargerAsync(id, ct);
         if (p is null) return Result.Failure("Prévision introuvable.");
         if (p.Statut != StatutPrevision.ValideeAdministrateur)
-            return Result.Failure("Seule une prévision validée par l'Administrateur peut être exécutée.");
+            return Result.Failure("Seule une prévision validée par l'Administrateur peut être ouverte.");
 
         var chantier = await _uow.Chantiers.GetByIdAsync(p.ChantierId, ct);
         if (chantier is null) return Result.Failure("Chantier introuvable.");
 
+        var total = p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Total);
+        if (total <= 0) return Result.Failure("Cette prévision ne comporte aucune ligne chiffrée.");
+
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            foreach (var ligne in p.Lignes.Where(l => !l.IsDeleted))
+            // --- Rattachement à l'enveloppe du mois ---
+            var enveloppe = await _uow.PrevisionsMensuelles.Query()
+                .FirstOrDefaultAsync(m => m.ChantierId == p.ChantierId
+                                          && m.Annee == p.DatePrevision.Year
+                                          && m.Mois == p.DatePrevision.Month
+                                          && m.Statut == StatutPrevisionMensuelle.Validee, ct);
+
+            if (enveloppe is null)
             {
-                if (ligne.TypeBudget == TypeBudget.Compte)
-                {
-                    var res = await _budgetService.ImputerBudgetCompteAsync(ligne.Total, utiliserReserve, ct);
-                    if (!res.Succeeded) { await _uow.RollbackAsync(ct); return res; }
-
-                    // Remboursement de dette : si la ligne cible une dette, elle diminue.
-                    if (ligne.DetteFournisseurId.HasValue)
-                    {
-                        var dette = await _uow.DettesFournisseurs.GetByIdAsync(ligne.DetteFournisseurId.Value, ct);
-                        if (dette is not null)
-                        {
-                            dette.MontantPaye += ligne.Total;
-                            dette.Statut = dette.SoldeRestant <= 0
-                                ? StatutDette.Soldee
-                                : StatutDette.PartiellementPayee;
-                            _uow.DettesFournisseurs.Update(dette);
-                        }
-                    }
-                }
-                else // Matériel
-                {
-                    // On contrôle l'argent RÉELLEMENT transféré depuis la banque du chantier
-                    // (MaterielDisponible = transféré − consommé), et non le simple plafond :
-                    // sans transfert préalable, il n'y a pas d'argent à dépenser.
-                    if (chantier.MaterielTransfere <= 0)
-                    {
-                        await _uow.RollbackAsync(ct);
-                        return Result.Failure(
-                            $"Aucun transfert vers le Budget Matériel du chantier {chantier.Nom}. " +
-                            "Effectuez d'abord un transfert depuis la banque (menu Banques).");
-                    }
-
-                    var depassement = ligne.Total - chantier.MaterielDisponible;
-                    if (depassement > 0)
-                    {
-                        if (!utiliserReserve)
-                        {
-                            await _uow.RollbackAsync(ct);
-                            return Result.Failure(
-                                $"Budget Matériel disponible insuffisant sur {chantier.Nom} : il manque {depassement:N0} Ar. " +
-                                $"Transféré {chantier.MaterielTransfere:N0} Ar, déjà consommé {chantier.Consommation:N0} Ar. " +
-                                "Effectuez un transfert supplémentaire ou utilisez la réserve.");
-                        }
-                        if (depassement > chantier.ReserveRestante)
-                        {
-                            await _uow.RollbackAsync(ct);
-                            return Result.Failure($"Réserve du chantier insuffisante ({chantier.ReserveRestante:N0} Ar).");
-                        }
-                        chantier.ReserveUtilisee += depassement;
-                        chantier.Consommation += ligne.Total - depassement;
-                    }
-                    else
-                    {
-                        chantier.Consommation += ligne.Total;
-                    }
-
-                    // Diminution automatique du stock si un matériau est ciblé.
-                    if (ligne.MateriauId.HasValue)
-                    {
-                        var mat = await _uow.Materiaux.GetByIdAsync(ligne.MateriauId.Value, ct);
-                        if (mat is not null)
-                        {
-                            mat.QuantiteUtilisee += ligne.Quantite;
-                            _uow.Materiaux.Update(mat);
-                        }
-                    }
-                    _uow.Chantiers.Update(chantier);
-                }
-
-                // Génère la dépense réelle correspondante.
-                await _uow.Depenses.AddAsync(new Depense
-                {
-                    Date = DateTime.UtcNow,
-                    ChantierId = p.ChantierId,
-                    PrevisionJournaliereId = p.Id,
-                    Categorie = ligne.Categorie,
-                    Designation = ligne.Designation,
-                    Quantite = ligne.Quantite,
-                    PrixUnitaire = ligne.PrixUnitaireEstime,
-                    BudgetConcerne = ligne.TypeBudget
-                }, ct);
+                await _uow.RollbackAsync(ct);
+                return Result.Failure(
+                    $"Aucune enveloppe mensuelle ouverte pour {PrevisionMensuelle.NomDuMois(p.DatePrevision.Month)} " +
+                    $"{p.DatePrevision.Year} sur {chantier.Nom}. " +
+                    "Créez et validez l'enveloppe du mois avant d'ouvrir une prévision journalière.");
             }
 
+            // --- Reprise du reliquat de la journée précédente ---
+            // On prend la dernière prévision ouverte ou clôturée du chantier, antérieure
+            // à celle-ci, et dont le reliquat n'a pas déjà été repris par une autre.
+            var precedente = await _uow.Previsions.Query()
+                .Where(x => x.ChantierId == p.ChantierId
+                            && x.Id != p.Id
+                            && x.DatePrevision < p.DatePrevision
+                            && (x.Statut == StatutPrevision.Executee
+                                || x.Statut == StatutPrevision.RapportSoumis
+                                || x.Statut == StatutPrevision.Cloturee))
+                .OrderByDescending(x => x.DatePrevision).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            var report = 0m;
+            if (precedente is not null)
+            {
+                var dejaRepris = await _uow.Previsions.AnyAsync(
+                    x => x.PrevisionPrecedenteId == precedente.Id && x.Id != p.Id, ct);
+
+                if (!dejaRepris)
+                {
+                    // Le reliquat se recalcule à partir des montants figés sur la prévision.
+                    // Les parenthèses sont indispensables : sans elles, une prévision sans
+                    // ligne ferait retomber le plafond à zéro en perdant le report.
+                    var totalPrecedent = await _uow.PrevisionLignes.Query()
+                        .Where(l => l.PrevisionJournaliereId == precedente.Id)
+                        .SumAsync(l => (decimal?)(l.Quantite * l.PrixUnitaireEstime), ct) ?? 0m;
+
+                    var plafondPrecedent = precedente.ReportVeille + totalPrecedent;
+                    report = plafondPrecedent - precedente.MontantDecaisse;
+                    if (report < 0) report = 0;
+                    p.PrevisionPrecedenteId = precedente.Id;
+                }
+            }
+
+            // --- L'enveloppe du mois doit pouvoir couvrir la journée ---
+            var disponibleMois = enveloppe.EnveloppeTotale - enveloppe.MontantConsomme;
+            if (total > disponibleMois)
+            {
+                await _uow.RollbackAsync(ct);
+                return Result.Failure(
+                    $"Enveloppe de {enveloppe.Libelle} insuffisante : {disponibleMois:N0} Ar disponibles " +
+                    $"pour une prévision de {total:N0} Ar. " +
+                    $"(Enveloppe {enveloppe.EnveloppeTotale:N0} Ar dont {enveloppe.ReportMoisPrecedent:N0} Ar " +
+                    $"reportés, déjà décaissé {enveloppe.MontantConsomme:N0} Ar.)");
+            }
+
+            p.PrevisionMensuelleId = enveloppe.Id;
+            p.ReportVeille = report;
+            p.MontantDecaisse = 0m;
             p.Statut = StatutPrevision.Executee;
             p.DateExecution = DateTime.UtcNow;
             _uow.Previsions.Update(p);
@@ -251,16 +240,51 @@ public class PrevisionService : IPrevisionService
             await _uow.CommitAsync(ct);
 
             await _alertes.EvaluerAlertesAsync(ct);
-            await _audit.LogAsync(TypeActionAudit.Execution, nameof(PrevisionJournaliere), id.ToString(), ct: ct);
-            _logger.LogInformation("Prévision {Ref} exécutée (chantier {Chantier}).", p.Reference, chantier.Nom);
+            await _audit.LogAsync(TypeActionAudit.Execution, nameof(PrevisionJournaliere), id.ToString(),
+                nouvelleValeur: $"Enveloppe ouverte : {total:N0} Ar + report {report:N0} Ar", ct: ct);
+
+            _logger.LogInformation(
+                "Prévision {Ref} ouverte sur {Chantier} : plafond {Plafond} Ar (dont {Report} Ar reportés).",
+                p.Reference, chantier.Nom, total + report, report);
+
             return Result.Success();
         }
         catch (Exception ex)
         {
             await _uow.RollbackAsync(ct);
-            _logger.LogError(ex, "Échec d'exécution de la prévision {Id}.", id);
-            return Result.Failure("Une erreur est survenue lors de l'exécution : " + ex.Message);
+            _logger.LogError(ex, "Échec de l'ouverture de la prévision {Id}.", id);
+            return Result.Failure("Une erreur est survenue lors de l'ouverture : " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Le chef de chantier atteste avoir reçu l'argent de la journée.
+    /// Sans cette signature, aucun décaissement n'est possible.
+    /// </summary>
+    public async Task<Result> AccuserReceptionAsync(long id, string nomSignataire, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(nomSignataire))
+            return Result.Failure("Le nom du signataire est obligatoire.");
+
+        var p = await ChargerAsync(id, ct);
+        if (p is null) return Result.Failure("Prévision introuvable.");
+        if (p.Statut != StatutPrevision.Executee)
+            return Result.Failure("Seule une prévision ouverte peut faire l'objet d'un accusé de réception.");
+        if (p.DateAccuseReception.HasValue)
+            return Result.Failure("La réception de cette enveloppe a déjà été signée.");
+
+        p.AccuseReceptionParId = _currentUser.UserId;
+        p.AccuseNomSignataire = nomSignataire.Trim();
+        p.DateAccuseReception = DateTime.UtcNow;
+        p.MontantAccuse = p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Total) + p.ReportVeille;
+        _uow.Previsions.Update(p);
+        await _uow.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(),
+            nouvelleValeur: $"Réception signée par {nomSignataire.Trim()} — {p.MontantAccuse:N0} Ar", ct: ct);
+
+        _logger.LogInformation("Réception de {Ref} signée par {Nom}.", p.Reference, nomSignataire);
+        return Result.Success();
     }
 
     private async Task<PrevisionJournaliere?> ChargerAsync(long id, CancellationToken ct)

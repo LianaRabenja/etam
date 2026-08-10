@@ -197,6 +197,9 @@
     </div>
 </div>
 
+<!-- ============ Argent de la journée, décaissements et justificatifs ============ -->
+@await Html.PartialAsync("_EnveloppeDuJour", Model)
+
 <!-- ============ Compte rendu des travaux réalisés ============ -->
 @if (Model.Statut == StatutPrevision.Executee || Model.Statut == StatutPrevision.RapportSoumis
      || Model.Statut == StatutPrevision.Cloturee)

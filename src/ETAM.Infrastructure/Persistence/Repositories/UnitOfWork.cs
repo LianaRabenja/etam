@@ -19,6 +19,10 @@ public class UnitOfWork : IUnitOfWork
         MouvementsMateriau = new GenericRepository<MouvementMateriau>(context);
         Previsions = new GenericRepository<PrevisionJournaliere>(context);
         PrevisionLignes = new GenericRepository<PrevisionLigne>(context);
+        PrevisionsMensuelles = new GenericRepository<PrevisionMensuelle>(context);
+        PrevisionMensuelleLignes = new GenericRepository<PrevisionMensuelleLigne>(context);
+        Decaissements = new GenericRepository<Decaissement>(context);
+        PiecesJointes = new GenericRepository<PieceJointe>(context);
         PrevisionsGlobales = new GenericRepository<PrevisionGlobale>(context);
         PrevisionsGlobalesLignes = new GenericRepository<PrevisionGlobaleLigne>(context);
         Depenses = new GenericRepository<Depense>(context);
@@ -44,6 +48,10 @@ public class UnitOfWork : IUnitOfWork
     public IGenericRepository<MouvementMateriau> MouvementsMateriau { get; }
     public IGenericRepository<PrevisionJournaliere> Previsions { get; }
     public IGenericRepository<PrevisionLigne> PrevisionLignes { get; }
+    public IGenericRepository<PrevisionMensuelle> PrevisionsMensuelles { get; }
+    public IGenericRepository<PrevisionMensuelleLigne> PrevisionMensuelleLignes { get; }
+    public IGenericRepository<Decaissement> Decaissements { get; }
+    public IGenericRepository<PieceJointe> PiecesJointes { get; }
     public IGenericRepository<PrevisionGlobale> PrevisionsGlobales { get; }
     public IGenericRepository<PrevisionGlobaleLigne> PrevisionsGlobalesLignes { get; }
     public IGenericRepository<Depense> Depenses { get; }

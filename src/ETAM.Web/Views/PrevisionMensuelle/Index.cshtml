@@ -1,0 +1,85 @@
+@model List<ETAM.Domain.Entities.PrevisionMensuelle>
+@using ETAM.Domain.Enums
+@{ ViewData["Title"] = "Enveloppes mensuelles"; }
+
+@functions {
+    string Badge(StatutPrevisionMensuelle s) => s switch
+    {
+        StatutPrevisionMensuelle.Brouillon => "bg-secondary",
+        StatutPrevisionMensuelle.Validee => "bg-success",
+        StatutPrevisionMensuelle.Cloturee => "bg-dark",
+        _ => "bg-danger"
+    };
+    string Libelle(StatutPrevisionMensuelle s) => s switch
+    {
+        StatutPrevisionMensuelle.Brouillon => "Brouillon",
+        StatutPrevisionMensuelle.Validee => "Ouverte",
+        StatutPrevisionMensuelle.Cloturee => "Clôturée",
+        _ => "Refusée"
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-0">Enveloppes mensuelles</h5>
+        <small class="text-muted">Le montant alloué au chantier pour le mois, plus le reste du mois précédent.</small>
+    </div>
+    @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant"))
+    {
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="fa-solid fa-plus me-1"></i> Nouveau mois
+        </a>
+    }
+</div>
+
+<form method="get" class="etam-card p-3 mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label small text-muted mb-1">Chantier</label>
+            <select name="chantierId" class="form-select" onchange="this.form.submit()">
+                <option value="">Tous les chantiers</option>
+                @foreach (var c in (ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>)
+                                   ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+                {
+                    <option value="@c.Id" selected="@(ViewBag.ChantierId != null && (long)ViewBag.ChantierId == c.Id)">@c.Nom</option>
+                }
+            </select>
+        </div>
+    </div>
+</form>
+
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr>
+        <th>Mois</th><th>Chantier</th>
+        <th class="text-end">Prévu</th>
+        <th class="text-end">Report du mois précédent</th>
+        <th class="text-end">Enveloppe totale</th>
+        <th class="text-end">Décaissé</th>
+        <th class="text-end">Reste</th>
+        <th>État</th><th></th>
+    </tr></thead>
+    <tbody>
+    @foreach (var m in Model)
+    {
+        <tr>
+            <td class="fw-semibold">@m.Libelle</td>
+            <td class="small">@m.Chantier?.Nom</td>
+            <td class="text-end">@m.MontantPrevu.ToString("N0")</td>
+            <td class="text-end @(m.ReportMoisPrecedent > 0 ? "text-info fw-semibold" : "text-muted")">
+                @(m.ReportMoisPrecedent > 0 ? "+ " + m.ReportMoisPrecedent.ToString("N0") : "—")
+            </td>
+            <td class="text-end fw-semibold">@m.EnveloppeTotale.ToString("N0")</td>
+            <td class="text-end">@m.MontantConsomme.ToString("N0")</td>
+            <td class="text-end fw-semibold @(m.Disponible <= 0 ? "text-danger" : "text-success")">
+                @m.Disponible.ToString("N0")
+            </td>
+            <td><span class="badge @Badge(m.Statut)">@Libelle(m.Statut)</span></td>
+            <td class="text-end">
+                <a asp-action="Details" asp-route-id="@m.Id" class="btn btn-sm btn-outline-primary">Détail</a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>

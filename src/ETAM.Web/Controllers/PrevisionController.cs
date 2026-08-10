@@ -40,8 +40,31 @@ public class PrevisionController : Controller
         var prevision = await _uow.Previsions.Query().AsNoTracking()
             .Include(p => p.Chantier)
             .Include(p => p.Lignes).ThenInclude(l => l.PrevisionGlobaleLigne)
+            .Include(p => p.PrevisionMensuelle)
+            .Include(p => p.Decaissements)
             .FirstOrDefaultAsync(p => p.Id == id, ct);
         if (prevision is null) return NotFound();
+
+        // Les pièces jointes sont chargées sans leur contenu binaire : inclure la colonne
+        // bytea ici ferait transiter plusieurs mégaoctets à chaque affichage de la page.
+        prevision.PiecesJointes = await _uow.PiecesJointes.Query().AsNoTracking()
+            .Where(pj => pj.PrevisionJournaliereId == id)
+            .OrderBy(pj => pj.DateAjout)
+            .Select(pj => new PieceJointe
+            {
+                Id = pj.Id,
+                PrevisionJournaliereId = pj.PrevisionJournaliereId,
+                NomFichier = pj.NomFichier,
+                TypeMime = pj.TypeMime,
+                Taille = pj.Taille,
+                Description = pj.Description,
+                NumeroPiece = pj.NumeroPiece,
+                Emetteur = pj.Emetteur,
+                MontantFacture = pj.MontantFacture,
+                DateAjout = pj.DateAjout,
+                Contenu = Array.Empty<byte>()
+            })
+            .ToListAsync(ct);
 
         // Contexte budgétaire pour aider le valideur à décider.
         var budget = (await _uow.BudgetsComptes.ListAsync(b => b.EstActif, ct))
@@ -518,6 +541,37 @@ public class PrevisionController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Refuser(long id, string motif, CancellationToken ct)
         => Retour(await _service.RefuserAsync(id, motif ?? "Non précisé", ct));
+
+    /// <summary>Accusé de réception imprimable, à faire signer et à classer.</summary>
+    public async Task<IActionResult> AccuseRecu(long id, CancellationToken ct)
+    {
+        var p = await _uow.Previsions.Query().AsNoTracking()
+            .Include(x => x.Chantier)
+            .Include(x => x.Lignes)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+        if (!p.DateAccuseReception.HasValue)
+        {
+            TempData["Error"] = "La réception de cette enveloppe n'a pas encore été signée.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+        return View(p);
+    }
+
+    /// <summary>
+    /// Le chef de chantier atteste avoir reçu l'argent de la journée.
+    /// Tant que ce n'est pas signé, aucun décaissement n'est possible.
+    /// </summary>
+    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AccuserReception(long id, string nomSignataire, CancellationToken ct)
+    {
+        var r = await _service.AccuserReceptionAsync(id, nomSignataire ?? string.Empty, ct);
+        if (r.Succeeded) TempData["Success"] = "Réception signée. Les décaissements sont maintenant possibles.";
+        else TempData["Error"] = r.Error;
+        return RedirectToAction(nameof(Details), new { id });
+    }
 
     private IActionResult Retour(ETAM.Application.Common.Models.Result r)
     {

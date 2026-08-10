@@ -71,7 +71,9 @@
             @if (isAdmin) { <li><a href="/BudgetMateriel/Index"><i class="fa-solid fa-boxes-stacked"></i> Budget Matériel</a></li> }
             @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> Approvisionnements</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("Catalogue")" href="/Catalogue/Index"><i class="fa-solid fa-list-check"></i> Catalogue (désignations)</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> Enveloppes mensuelles</a></li> }
             @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-calendar-day"></i> Prévisions Journalières</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("Decaissement")" href="/Decaissement/Index"><i class="fa-solid fa-money-bill-transfer"></i> Décaissements</a></li> }
             @if (isAdmin) { <li><a href="/Depenses/Index"><i class="fa-solid fa-receipt"></i> Dépenses</a></li> }
 
             @if (isAdmin || voitBanques) { <li class="section">Trésorerie</li> }

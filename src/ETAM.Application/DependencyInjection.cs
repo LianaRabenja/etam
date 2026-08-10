@@ -16,6 +16,8 @@ public static class DependencyInjection
 
         services.AddScoped<IBudgetService, BudgetService>();
         services.AddScoped<IPrevisionService, PrevisionService>();
+        services.AddScoped<IPrevisionMensuelleService, PrevisionMensuelleService>();
+        services.AddScoped<IDecaissementService, DecaissementService>();
         services.AddScoped<IBanqueService, BanqueService>();
 
         return services;

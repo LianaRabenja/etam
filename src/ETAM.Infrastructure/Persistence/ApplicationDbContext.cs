@@ -31,6 +31,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<MouvementMateriau> MouvementsMateriau => Set<MouvementMateriau>();
     public DbSet<PrevisionJournaliere> Previsions => Set<PrevisionJournaliere>();
     public DbSet<PrevisionLigne> PrevisionLignes => Set<PrevisionLigne>();
+    public DbSet<PrevisionMensuelle> PrevisionsMensuelles => Set<PrevisionMensuelle>();
+    public DbSet<PrevisionMensuelleLigne> PrevisionMensuelleLignes => Set<PrevisionMensuelleLigne>();
+    public DbSet<Decaissement> Decaissements => Set<Decaissement>();
+    public DbSet<PieceJointe> PiecesJointes => Set<PieceJointe>();
     public DbSet<PrevisionGlobale> PrevisionsGlobales => Set<PrevisionGlobale>();
     public DbSet<PrevisionGlobaleLigne> PrevisionsGlobalesLignes => Set<PrevisionGlobaleLigne>();
     public DbSet<Depense> Depenses => Set<Depense>();
@@ -66,6 +70,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<MouvementMateriau>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionJournaliere>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionLigne>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<PrevisionMensuelle>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<PrevisionMensuelleLigne>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<Decaissement>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<PieceJointe>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionGlobale>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionGlobaleLigne>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<Depense>().HasQueryFilter(e => !e.IsDeleted);

@@ -1,0 +1,110 @@
+@model ETAM.Domain.Entities.PrevisionMensuelle
+@{ ViewData["Title"] = "Nouvelle enveloppe mensuelle"; }
+
+<div class="etam-card p-4">
+    <h5 class="mb-1">Nouvelle enveloppe mensuelle</h5>
+    <p class="text-muted small mb-4">
+        Le montant alloué au chantier pour ce mois. Le reste non dépensé du mois précédent
+        sera ajouté automatiquement.
+    </p>
+
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Chantier</label>
+                <select name="chantierId" class="form-select" required>
+                    <option value="">— Choisir —</option>
+                    @foreach (var c in (ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>)
+                                       ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+                    {
+                        <option value="@c.Id" selected="@(Model.ChantierId == c.Id)">@c.Nom</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Année</label>
+                <input name="annee" type="number" class="form-control" value="@Model.Annee" min="2020" max="2100" required />
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Mois</label>
+                <select name="mois" class="form-select" required>
+                    @for (var i = 1; i <= 12; i++)
+                    {
+                        <option value="@i" selected="@(Model.Mois == i)">
+                            @ETAM.Domain.Entities.PrevisionMensuelle.NomDuMois(i)
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Montant prévu pour le mois (Ar)</label>
+                <input name="montantPrevu" type="number" step="1" min="1" class="form-control form-control-lg"
+                       value="@(Model.MontantPrevu > 0 ? Model.MontantPrevu.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")"
+                       placeholder="125000000" required />
+                <div class="form-text">
+                    Le total des mois ne peut pas dépasser le budget du projet.
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Observation</label>
+                <input name="observation" class="form-control" value="@Model.Observation"
+                       placeholder="Facultatif" />
+            </div>
+        </div>
+
+        <hr class="my-4" />
+
+        <h6>Répartition par rubrique <span class="text-muted fw-normal">(facultatif)</span></h6>
+        <p class="text-muted small">
+            Permet de comparer plus tard le prévu et le dépensé, poste par poste.
+        </p>
+
+        <table class="table table-sm align-middle" id="tableRubriques">
+            <thead><tr><th>Rubrique</th><th style="width:220px">Montant (Ar)</th><th style="width:60px"></th></tr></thead>
+            <tbody>
+            @foreach (var r in new[] { "Approvisionnement", "Main d'œuvre", "Transport", "Imprévus" })
+            {
+                <tr>
+                    <td><input name="rubriques" class="form-control" value="@r" /></td>
+                    <td><input name="montantsRubriques" type="number" step="1" min="0" class="form-control" value="0" /></td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <button type="button" class="btn btn-sm btn-outline-secondary mb-4" onclick="ajouterRubrique()">
+            <i class="fa-solid fa-plus me-1"></i> Ajouter une rubrique
+        </button>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Enregistrer</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Annuler</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function ajouterRubrique() {
+    const corps = document.querySelector('#tableRubriques tbody');
+    const ligne = document.createElement('tr');
+    ligne.innerHTML =
+        '<td><input name="rubriques" class="form-control" placeholder="Nom de la rubrique" /></td>' +
+        '<td><input name="montantsRubriques" type="number" step="1" min="0" class="form-control" value="0" /></td>' +
+        '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger" ' +
+        'onclick="this.closest(\'tr\').remove()"><i class="fa-solid fa-xmark"></i></button></td>';
+    corps.appendChild(ligne);
+}
+</script>
+}

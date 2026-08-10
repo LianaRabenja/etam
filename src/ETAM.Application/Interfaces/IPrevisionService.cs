@@ -13,8 +13,17 @@ public interface IPrevisionService
     Task<Result> RefuserAsync(long previsionId, string motif, CancellationToken ct = default);
 
     /// <summary>
-    /// Exécute la prévision : diminue le Budget Comptes (lignes Compte) ou le Budget Matériel
-    /// du chantier + le stock (lignes Materiel). Toutes les opérations sont historisées.
+    /// Ouvre l'enveloppe de la journée : rattache la prévision au mois en cours et y
+    /// ajoute le reliquat non décaissé de la journée précédente.
+    ///
+    /// Ne sort aucun argent de la banque et n'impute aucun budget : c'est le rôle
+    /// des décaissements (<see cref="IDecaissementService"/>).
     /// </summary>
     Task<Result> ExecuterAsync(long previsionId, bool utiliserReserve = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Le chef de chantier atteste avoir reçu l'argent mis à disposition.
+    /// Tant que ce n'est pas signé, aucun décaissement n'est autorisé.
+    /// </summary>
+    Task<Result> AccuserReceptionAsync(long previsionId, string nomSignataire, CancellationToken ct = default);
 }

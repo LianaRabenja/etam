@@ -1,0 +1,55 @@
+@model List<ETAM.Domain.Entities.Decaissement>
+@using ETAM.Domain.Enums
+@{ ViewData["Title"] = "Décaissements"; }
+
+@functions {
+    string LibelleMode(ModePaiement m) => m switch
+    {
+        ModePaiement.Especes => "Espèces",
+        ModePaiement.Cheque => "Chèque",
+        ModePaiement.Virement => "Virement",
+        _ => "Mobile Money"
+    };
+}
+
+<div class="mb-3">
+    <h5 class="mb-0">Décaissements</h5>
+    <small class="text-muted">
+        Total affiché : @Model.Sum(d => d.Montant).ToString("N0") Ar sur @Model.Count opération(s).
+        Ce sont les seules sorties réelles d'argent.
+    </small>
+</div>
+
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr>
+        <th>Date</th><th>Chantier</th><th>Bénéficiaire</th><th>Motif</th>
+        <th>Mode</th><th>Compte</th>
+        <th class="text-end">Montant</th><th>Reçu signé</th>
+    </tr></thead>
+    <tbody>
+    @foreach (var d in Model)
+    {
+        <tr>
+            <td>@d.Date.ToString("dd/MM/yyyy")</td>
+            <td class="small">@d.PrevisionJournaliere?.Chantier?.Nom</td>
+            <td class="fw-semibold">@d.Beneficiaire</td>
+            <td class="small">@d.Motif</td>
+            <td><span class="badge bg-light text-dark">@LibelleMode(d.Mode)</span></td>
+            <td class="small text-muted">@d.CompteBancaire?.Nom</td>
+            <td class="text-end fw-semibold">@d.Montant.ToString("N0") Ar</td>
+            <td>
+                @if (d.DateAccuse.HasValue)
+                {
+                    <span class="badge bg-success" title="@d.AccuseNom">@d.AccuseNom</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary">non signé</span>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>
