@@ -216,13 +216,40 @@
         {
             @if (User.IsInRole("Chef de chantier") || User.IsInRole("Administrateur") || User.IsInRole("Correspondant"))
             {
-                <form asp-action="SoumettreRapport" method="post">
+                @* Un seul formulaire : le texte du compte rendu et ses factures partent ensemble. *@
+                <form asp-action="SoumettreRapport" method="post" enctype="multipart/form-data">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@Model.Id" />
+
                     <label class="form-label">Décrivez ce qui a été fait avec cet argent</label>
-                    <textarea name="rapport" class="form-control mb-2" rows="4" required
+                    <textarea name="rapport" class="form-control mb-3" rows="4" required
                               placeholder="Ex : coulage de la dalle du 1er étage, 3 t de ciment utilisées, acompte versé aux maçons...">@Model.RapportRealisation</textarea>
-                    <button class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i> Envoyer le compte rendu</button>
+
+                    <label class="form-label">
+                        Factures et justificatifs
+                        <span class="text-muted fw-normal">— photos ou PDF, 5 Mo maximum par fichier</span>
+                    </label>
+                    <input type="file" name="factures" class="form-control mb-2" multiple
+                           accept="image/*,application/pdf" />
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <input name="numeroPiece" class="form-control form-control-sm"
+                                   placeholder="N° de facture" />
+                        </div>
+                        <div class="col-md-4">
+                            <input name="emetteur" class="form-control form-control-sm"
+                                   placeholder="Fournisseur" />
+                        </div>
+                        <div class="col-md-4">
+                            <input name="montantFacture" type="number" step="1" min="0"
+                                   class="form-control form-control-sm" placeholder="Montant de la facture (Ar)" />
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary">
+                        <i class="fa-solid fa-paper-plane me-1"></i> Envoyer le compte rendu et les factures
+                    </button>
                 </form>
             }
             else

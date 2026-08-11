@@ -153,7 +153,7 @@
     <div class="etam-card p-4 mb-3">
         <h6 class="mb-1">Factures et justificatifs</h6>
         <p class="text-muted small mb-3">
-            Photos ou PDF des factures d'achat de matériaux. 5 Mo maximum par fichier.
+            Ils s'ajoutent en bas de cette page, en même temps que le compte rendu des travaux.
         </p>
 
         @if (Model.PiecesJointes.Any(x => !x.IsDeleted))
@@ -202,39 +202,12 @@
                 }
             </div>
         }
-
-        @if (Model.Statut != StatutPrevision.Cloturee
-             && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")
-                 || User.IsInRole("Chef de chantier") || User.IsInRole("Magasinier")))
+        else
         {
-            <form asp-controller="PieceJointe" asp-action="Televerser" method="post"
-                  enctype="multipart/form-data" class="row g-2 align-items-end">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="previsionId" value="@Model.Id" />
-
-                <div class="col-md-4">
-                    <label class="form-label small">Fichiers</label>
-                    <input type="file" name="fichiers" class="form-control" multiple required
-                           accept="image/*,application/pdf" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">N° de facture</label>
-                    <input name="numeroPiece" class="form-control" placeholder="FAC-2026-001" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Fournisseur</label>
-                    <input name="emetteur" class="form-control" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Montant (Ar)</label>
-                    <input name="montantFacture" type="number" step="1" min="0" class="form-control" />
-                </div>
-                <div class="col-md-2">
-                    <button class="btn btn-outline-primary w-100">
-                        <i class="fa-solid fa-paperclip me-1"></i> Joindre
-                    </button>
-                </div>
-            </form>
+            <p class="text-muted mb-0">
+                Aucune facture pour l'instant. Elles se joignent en bas de page,
+                avec le compte rendu des travaux.
+            </p>
         }
     </div>
 }

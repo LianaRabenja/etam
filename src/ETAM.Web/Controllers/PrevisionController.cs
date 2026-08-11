@@ -16,12 +16,18 @@ public class PrevisionController : Controller
     private readonly IPrevisionService _service;
     private readonly IUnitOfWork _uow;
     private readonly IReferenceDataCache _referenceData;
+    private readonly ICurrentUserService _currentUser;
 
-    public PrevisionController(IPrevisionService service, IUnitOfWork uow, IReferenceDataCache referenceData)
+    public PrevisionController(
+        IPrevisionService service,
+        IUnitOfWork uow,
+        IReferenceDataCache referenceData,
+        ICurrentUserService currentUser)
     {
         _service = service;
         _uow = uow;
         _referenceData = referenceData;
+        _currentUser = currentUser;
     }
 
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -361,7 +367,11 @@ public class PrevisionController : Controller
     [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> SoumettreRapport(long id, string rapport, CancellationToken ct)
+    [RequestSizeLimit(30 * 1024 * 1024)]
+    public async Task<IActionResult> SoumettreRapport(
+        long id, string rapport,
+        List<IFormFile>? factures, string? numeroPiece, string? emetteur, decimal? montantFacture,
+        CancellationToken ct)
     {
         var prev = await _uow.Previsions.GetByIdAsync(id, ct);
         if (prev is null) return NotFound();
@@ -381,8 +391,60 @@ public class PrevisionController : Controller
         prev.Statut = StatutPrevision.RapportSoumis;
         prev.MotifRefusRapport = null;
         _uow.Previsions.Update(prev);
+
+        // Les factures partent avec le compte rendu, dans le même envoi.
+        var refusees = new List<string>();
+        var ajoutees = 0;
+
+        foreach (var fichier in factures ?? new List<IFormFile>())
+        {
+            if (fichier.Length == 0) continue;
+
+            if (fichier.Length > 5 * 1024 * 1024)
+            {
+                refusees.Add($"{fichier.FileName} (plus de 5 Mo)");
+                continue;
+            }
+
+            var type = (fichier.ContentType ?? string.Empty).ToLowerInvariant();
+            if (!type.StartsWith("image/") && type != "application/pdf")
+            {
+                refusees.Add($"{fichier.FileName} (photo ou PDF uniquement)");
+                continue;
+            }
+
+            using var flux = new MemoryStream();
+            await fichier.CopyToAsync(flux, ct);
+
+            await _uow.PiecesJointes.AddAsync(new PieceJointe
+            {
+                PrevisionJournaliereId = prev.Id,
+                NomFichier = Path.GetFileName(fichier.FileName),
+                TypeMime = type,
+                Taille = fichier.Length,
+                Contenu = flux.ToArray(),
+                NumeroPiece = numeroPiece,
+                Emetteur = emetteur,
+                MontantFacture = montantFacture,
+                DateAjout = DateTime.UtcNow,
+                AjouteParId = _currentUser.UserId
+            }, ct);
+
+            ajoutees++;
+        }
+
         await _uow.SaveChangesAsync(ct);
-        TempData["Success"] = "Compte rendu envoyé à l'Administrateur pour réception.";
+
+        TempData["Success"] = ajoutees switch
+        {
+            0 => "Compte rendu envoyé à l'Administrateur pour réception.",
+            1 => "Compte rendu et 1 facture envoyés à l'Administrateur.",
+            _ => $"Compte rendu et {ajoutees} factures envoyés à l'Administrateur."
+        };
+
+        if (refusees.Count > 0)
+            TempData["Error"] = "Fichiers non joints : " + string.Join(" ; ", refusees);
+
         return RedirectToAction(nameof(Details), new { id });
     }
 

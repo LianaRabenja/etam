@@ -229,6 +229,44 @@ public class PrevisionService : IPrevisionService
                     $"reportés, déjà décaissé {enveloppe.MontantConsomme:N0} Ar.)");
             }
 
+            // --- Sortie d'argent automatique ---
+            // La banque est débitée du montant DEMANDÉ ce jour, et de lui seul.
+            // Le reliquat de la veille n'est pas redébité : cet argent est déjà
+            // sorti hier et se trouve encore entre les mains du chef de chantier.
+            var compte = await _uow.ComptesBancaires.Query()
+                .FirstOrDefaultAsync(c => c.ChantierId == p.ChantierId && c.EstActif, ct);
+
+            if (compte is null)
+            {
+                await _uow.RollbackAsync(ct);
+                return Result.Failure(
+                    $"Aucun compte bancaire actif pour {chantier.Nom}. " +
+                    "Créez son compte dans le menu Banques avant d'ouvrir une prévision.");
+            }
+
+            if (compte.Solde < total)
+            {
+                await _uow.RollbackAsync(ct);
+                return Result.Failure(
+                    $"Solde insuffisant sur {compte.Nom} : {compte.Solde:N0} Ar disponibles " +
+                    $"pour une prévision de {total:N0} Ar.");
+            }
+
+            compte.Solde -= total;
+            _uow.ComptesBancaires.Update(compte);
+
+            await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
+            {
+                CompteBancaireId = compte.Id,
+                Date = DateTime.UtcNow,
+                Type = TypeMouvementBancaire.Retrait,
+                Montant = total,
+                Beneficiaire = chantier.Responsable ?? "Chef de chantier",
+                Motif = $"{p.Reference} — remise de l'enveloppe du {p.DatePrevision:dd/MM/yyyy}",
+                ChantierId = p.ChantierId,
+                EstValide = true
+            }, ct);
+
             p.PrevisionMensuelleId = enveloppe.Id;
             p.ReportVeille = report;
             p.MontantDecaisse = 0m;
@@ -244,8 +282,9 @@ public class PrevisionService : IPrevisionService
                 nouvelleValeur: $"Enveloppe ouverte : {total:N0} Ar + report {report:N0} Ar", ct: ct);
 
             _logger.LogInformation(
-                "Prévision {Ref} ouverte sur {Chantier} : plafond {Plafond} Ar (dont {Report} Ar reportés).",
-                p.Reference, chantier.Nom, total + report, report);
+                "Prévision {Ref} ouverte sur {Chantier} : {Total} Ar retirés en banque, " +
+                "plafond du jour {Plafond} Ar (dont {Report} Ar reportés de la veille).",
+                p.Reference, chantier.Nom, total, total + report, report);
 
             return Result.Success();
         }

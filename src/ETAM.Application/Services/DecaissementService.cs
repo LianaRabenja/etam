@@ -76,15 +76,11 @@ public class DecaissementService : IDecaissementService
         var chantier = await _uow.Chantiers.GetByIdAsync(prevision.ChantierId, ct);
         if (chantier is null) return Result<long>.Failure("Chantier introuvable.");
 
+        // Le compte n'est ici qu'une référence pour la traçabilité : il n'est PAS
+        // débité. L'argent est sorti de la banque à l'ouverture de la prévision ;
+        // un décaissement ne fait que dire à qui il a été remis.
         var compte = await _uow.ComptesBancaires.GetByIdAsync(dto.CompteBancaireId, ct);
         if (compte is null) return Result<long>.Failure("Compte bancaire introuvable.");
-        if (!compte.EstActif) return Result<long>.Failure("Ce compte bancaire est clôturé.");
-
-        // --- 5. Provision du compte ---
-        if (compte.Solde < dto.Montant)
-            return Result<long>.Failure(
-                $"Solde insuffisant sur {compte.Nom} : {compte.Solde:N0} Ar disponibles " +
-                $"pour un décaissement de {dto.Montant:N0} Ar.");
 
         // --- 3. L'enveloppe du mois ---
         PrevisionMensuelle? enveloppe = null;
@@ -149,24 +145,9 @@ public class DecaissementService : IDecaissementService
             };
             await _uow.Decaissements.AddAsync(decaissement, ct);
 
-            // --- L'argent sort de la banque ---
-            compte.Solde -= dto.Montant;
-            _uow.ComptesBancaires.Update(compte);
-
-            await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
-            {
-                CompteBancaireId = compte.Id,
-                Date = dto.Date,
-                Type = dto.Mode == ModePaiement.Especes
-                    ? TypeMouvementBancaire.Retrait
-                    : TypeMouvementBancaire.Virement,
-                Montant = dto.Montant,
-                Beneficiaire = dto.Beneficiaire.Trim(),
-                Motif = $"{prevision.Reference} — {dto.Motif.Trim()}",
-                Reference = dto.Reference,
-                ChantierId = prevision.ChantierId,
-                EstValide = true
-            }, ct);
+            // Pas de mouvement bancaire ici : l'argent a quitté le compte à
+            // l'ouverture de la prévision. Ce décaissement dit seulement à qui
+            // il a été remis et pour quoi.
 
             // --- Les compteurs de consommation ---
             if (dto.BudgetConcerne == TypeBudget.Materiel)
@@ -281,14 +262,8 @@ public class DecaissementService : IDecaissementService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // Remise en état, dans l'ordre inverse de l'enregistrement.
-            var compte = await _uow.ComptesBancaires.GetByIdAsync(d.CompteBancaireId, ct);
-            if (compte is not null)
-            {
-                compte.Solde += d.Montant;
-                _uow.ComptesBancaires.Update(compte);
-            }
-
+            // Le solde bancaire n'est pas touché : ce décaissement ne l'avait pas
+            // débité. On remet seulement les compteurs de consommation en état.
             if (d.BudgetConcerne == TypeBudget.Materiel)
             {
                 var chantier = await _uow.Chantiers.GetByIdAsync(prevision.ChantierId, ct);
@@ -325,20 +300,6 @@ public class DecaissementService : IDecaissementService
                     _uow.PrevisionsMensuelles.Update(enveloppe);
                 }
             }
-
-            // Mouvement bancaire de contre-passation : on ne supprime jamais une écriture.
-            await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
-            {
-                CompteBancaireId = d.CompteBancaireId,
-                Date = DateTime.UtcNow,
-                Type = TypeMouvementBancaire.Depot,
-                Montant = d.Montant,
-                Beneficiaire = d.Beneficiaire,
-                Motif = $"Annulation décaissement — {motif}",
-                Reference = d.Reference,
-                ChantierId = prevision.ChantierId,
-                EstValide = true
-            }, ct);
 
             d.Observation = $"{d.Observation} | ANNULÉ le {DateTime.UtcNow:dd/MM/yyyy} par " +
                             $"{_currentUser.UserName} : {motif}";
