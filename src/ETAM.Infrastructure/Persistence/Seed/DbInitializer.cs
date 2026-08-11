@@ -21,6 +21,68 @@ public static class DbInitializer
     private static string MotDePasse(string variable, string valeurDeveloppement)
         => Environment.GetEnvironmentVariable(variable) is { Length: > 0 } v ? v : valeurDeveloppement;
 
+    /// <summary>
+    /// Efface toutes les données liées aux chantiers, en conservant les utilisateurs,
+    /// le catalogue des prix, les fournisseurs, le budget du bureau, les paramètres
+    /// et le journal d'audit.
+    ///
+    /// L'ordre suit les dépendances : on part des feuilles et on remonte vers les
+    /// chantiers. Le tout dans une transaction, donc sans état intermédiaire possible.
+    /// </summary>
+    private static async Task NettoyerDonneesChantiersAsync(ApplicationDbContext context, ILogger logger)
+    {
+        logger.LogWarning("NETTOYAGE DEMANDÉ : suppression de toutes les données de chantier.");
+
+        // Pas de BEGIN/COMMIT dans le texte SQL : Npgsql n'enveloppe pas
+        // automatiquement un lot de plusieurs instructions. La transaction est
+        // ouverte explicitement ci-dessous, sinon un échec en cours de route
+        // laisserait la base à moitié nettoyée.
+        const string sql = """
+            DELETE FROM "PiecesJointes";
+            DELETE FROM "Decaissements";
+            DELETE FROM "PrevisionLignes";
+            DELETE FROM "Previsions";
+            DELETE FROM "PrevisionMensuelleLignes";
+            DELETE FROM "PrevisionsMensuelles";
+            DELETE FROM "PrevisionsGlobalesLignes";
+            DELETE FROM "PrevisionsGlobales";
+            DELETE FROM "ApprovisionnementLignes";
+            DELETE FROM "Approvisionnements";
+            DELETE FROM "RapportTravailLignesAvancement";
+            DELETE FROM "RapportTravailLignesMateriaux";
+            DELETE FROM "RapportTravailLignesEquipements";
+            DELETE FROM "RapportsTravail";
+            DELETE FROM "MouvementsMateriau";
+            DELETE FROM "Materiaux";
+            DELETE FROM "Depenses";
+            DELETE FROM "Alertes";
+            DELETE FROM "DettesFournisseurs" WHERE "ChantierId" IS NOT NULL;
+            DELETE FROM "MouvementsBancaires"
+             WHERE "ChantierId" IS NOT NULL
+                OR "CompteBancaireId" IN (SELECT "Id" FROM "ComptesBancaires" WHERE "ChantierId" IS NOT NULL);
+            DELETE FROM "ComptesBancaires" WHERE "ChantierId" IS NOT NULL;
+            UPDATE "AspNetUsers" SET "ChantierId" = NULL WHERE "ChantierId" IS NOT NULL;
+            DELETE FROM "Chantiers";
+            UPDATE "BudgetsComptes"
+               SET "MontantConsomme" = 0, "MontantTransfere" = 0, "ReserveUtilisee" = 0;
+            """;
+
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(sql);
+            await transaction.CommitAsync();
+            logger.LogWarning(
+                "NETTOYAGE TERMINÉ. Retirez maintenant la variable ETAM_NETTOYER_CHANTIERS, " +
+                "sinon la base sera vidée à chaque redémarrage.");
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logger.LogError(ex, "Le nettoyage des données de chantier a échoué. Rien n'a été supprimé.");
+        }
+    }
+
     public static async Task SeedAsync(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
@@ -28,6 +90,15 @@ public static class DbInitializer
         ILogger logger)
     {
         await context.Database.MigrateAsync();
+
+        // --- Nettoyage des données de chantier, à la demande ---
+        // Déclenché uniquement si ETAM_NETTOYER_CHANTIERS vaut exactement OUI-EFFACER.
+        // Pensez à retirer la variable juste après : sinon la base serait vidée
+        // à chaque redémarrage du service.
+        if (Environment.GetEnvironmentVariable("ETAM_NETTOYER_CHANTIERS") == "OUI-EFFACER")
+        {
+            await NettoyerDonneesChantiersAsync(context, logger);
+        }
 
         // --- Migration douce de l'ancien libellé de rôle ---
         var ancienRole = await roleManager.FindByNameAsync(RolesEtam.AncienNomResponsableFinancier);
@@ -113,6 +184,22 @@ public static class DbInitializer
         //  CHANTIER D'EXEMPLE — NOSY BE
         //  Marché 150 M = bénéfice 80 M + budget projet 70 M (même compte bancaire).
         // =====================================================================
+        // Le chantier de démonstration n'est créé QUE si on le demande explicitement.
+        // Sans cette variable, le logiciel démarre vide : c'est le comportement voulu
+        // dès que l'on saisit ses vrais chantiers, et cela évite qu'un nettoyage de
+        // la base soit annulé par le redémarrage suivant.
+        var donneesExemple = string.Equals(
+            Environment.GetEnvironmentVariable("ETAM_DONNEES_EXEMPLE"),
+            "true", StringComparison.OrdinalIgnoreCase);
+
+        if (!donneesExemple)
+        {
+            logger.LogInformation(
+                "Données de démonstration désactivées. Pour les recréer, définissez " +
+                "ETAM_DONNEES_EXEMPLE=true puis redémarrez.");
+            return;
+        }
+
         var d0 = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
 
         var chantierExistant = await context.Chantiers.FirstOrDefaultAsync(c => c.Code == "NOS-01");
