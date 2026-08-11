@@ -1,55 +1,115 @@
-@model List<ETAM.Domain.Entities.Decaissement>
+@model List<ETAM.Web.Controllers.LigneSortie>
 @using ETAM.Domain.Enums
-@{ ViewData["Title"] = "Décaissements"; }
+@{
+    ViewData["Title"] = "Sorties d'argent";
+    var totalRemis = (decimal)(ViewBag.TotalRemis ?? 0m);
+    var totalDistribue = (decimal)(ViewBag.TotalDistribue ?? 0m);
+    var enMain = totalRemis - totalDistribue;
+}
 
 @functions {
-    string LibelleMode(ModePaiement m) => m switch
+    string LibelleMode(ModePaiement? m) => m switch
     {
         ModePaiement.Especes => "Espèces",
         ModePaiement.Cheque => "Chèque",
         ModePaiement.Virement => "Virement",
-        _ => "Mobile Money"
+        ModePaiement.MobileMoney => "Mobile Money",
+        _ => ""
     };
 }
 
 <div class="mb-3">
-    <h5 class="mb-0">Décaissements</h5>
+    <h5 class="mb-0">Sorties d'argent</h5>
     <small class="text-muted">
-        Total affiché : @Model.Sum(d => d.Montant).ToString("N0") Ar sur @Model.Count opération(s).
-        Ce sont les seules sorties réelles d'argent.
+        Ce que la banque a versé, et ce qui en a été distribué.
     </small>
 </div>
 
+<!-- Les trois chiffres qui résument tout -->
+<div class="etam-card p-3 mb-3">
+    <div class="row text-center g-3">
+        <div class="col-12 col-md-4">
+            <div class="text-muted small">Sorti de la banque</div>
+            <div class="fs-5 fw-semibold">@totalRemis.ToString("N0") Ar</div>
+            <small class="text-muted">à l'exécution des prévisions</small>
+        </div>
+        <div class="col-6 col-md-4">
+            <div class="text-muted small">Distribué et justifié</div>
+            <div class="fs-5 fw-semibold">@totalDistribue.ToString("N0") Ar</div>
+            <small class="text-muted">paiements enregistrés</small>
+        </div>
+        <div class="col-6 col-md-4">
+            <div class="text-muted small">Encore entre les mains des chefs</div>
+            <div class="fs-4 fw-bold @(enMain > 0 ? "text-warning" : "text-success")">
+                @enMain.ToString("N0") Ar
+            </div>
+            <small class="text-muted">reporté sur les journées suivantes</small>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-light border small">
+    <strong>Deux natures de lignes.</strong>
+    Une <span class="badge bg-primary">remise</span> est créée toute seule quand une prévision
+    est exécutée : c'est l'argent qui quitte la banque.
+    Un <span class="badge bg-success">paiement</span> est saisi par le chef : c'est l'argent
+    qu'il distribue. Seuls les paiements consomment le plafond du jour — c'est pour cela
+    que le reste peut être reporté au lendemain.
+</div>
+
 <div class="etam-card p-3">
-<table class="table table-hover align-middle datatable">
-    <thead><tr>
-        <th>Date</th><th>Chantier</th><th>Bénéficiaire</th><th>Motif</th>
-        <th>Mode</th><th>Compte</th>
-        <th class="text-end">Montant</th><th>Reçu signé</th>
-    </tr></thead>
-    <tbody>
-    @foreach (var d in Model)
-    {
-        <tr>
-            <td>@d.Date.ToString("dd/MM/yyyy")</td>
-            <td class="small">@d.PrevisionJournaliere?.Chantier?.Nom</td>
-            <td class="fw-semibold">@d.Beneficiaire</td>
-            <td class="small">@d.Motif</td>
-            <td><span class="badge bg-light text-dark">@LibelleMode(d.Mode)</span></td>
-            <td class="small text-muted">@d.CompteBancaire?.Nom</td>
-            <td class="text-end fw-semibold">@d.Montant.ToString("N0") Ar</td>
-            <td>
-                @if (d.DateAccuse.HasValue)
-                {
-                    <span class="badge bg-success" title="@d.AccuseNom">@d.AccuseNom</span>
-                }
-                else
-                {
-                    <span class="badge bg-secondary">non signé</span>
-                }
-            </td>
-        </tr>
-    }
-    </tbody>
-</table>
+@if (!Model.Any())
+{
+    <p class="text-muted mb-0">
+        Aucune sortie d'argent. Dès qu'une prévision journalière est exécutée,
+        sa remise d'enveloppe apparaît ici automatiquement.
+    </p>
+}
+else
+{
+    <table class="table table-hover align-middle datatable">
+        <thead><tr>
+            <th>Date</th><th>Nature</th><th>Chantier</th>
+            <th>Bénéficiaire</th><th>Motif</th><th>Mode</th>
+            <th class="text-end">Montant</th><th></th>
+        </tr></thead>
+        <tbody>
+        @foreach (var l in Model)
+        {
+            <tr class="@(l.EstRemise ? "table-light" : "")">
+                <td>@l.Date.ToString("dd/MM/yyyy")</td>
+                <td>
+                    @if (l.EstRemise)
+                    {
+                        <span class="badge bg-primary">remise</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-success">paiement</span>
+                    }
+                </td>
+                <td class="small">@l.Chantier</td>
+                <td class="fw-semibold">@l.Beneficiaire</td>
+                <td class="small">
+                    @l.Motif
+                    @if (l.EstRemise && !string.IsNullOrEmpty(l.Signataire))
+                    {
+                        <span class="text-success small">— reçu signé par @l.Signataire</span>
+                    }
+                    else if (l.EstRemise)
+                    {
+                        <span class="text-warning small">— réception non signée</span>
+                    }
+                </td>
+                <td class="small text-muted">@LibelleMode(l.Mode)</td>
+                <td class="text-end fw-semibold">@l.Montant.ToString("N0") Ar</td>
+                <td class="text-end">
+                    <a asp-controller="Prevision" asp-action="Details" asp-route-id="@l.PrevisionId"
+                       class="btn btn-sm btn-outline-primary">Voir</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
 </div>

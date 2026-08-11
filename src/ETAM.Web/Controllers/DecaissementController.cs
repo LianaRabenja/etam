@@ -23,21 +23,73 @@ public class DecaissementController : Controller
         _service = service;
     }
 
-    /// <summary>Journal des décaissements, tous chantiers confondus.</summary>
+    /// <summary>
+    /// Journal des sorties d'argent. Deux natures d'écritures cohabitent :
+    ///
+    ///   REMISE   — l'argent quitte la banque à l'exécution d'une prévision.
+    ///              Générée automatiquement, une par prévision ouverte.
+    ///   PAIEMENT — l'argent remis est distribué à quelqu'un. Saisie à la main.
+    ///
+    /// Seuls les paiements consomment le plafond du jour : une remise n'est pas
+    /// une dépense, c'est un déplacement de la banque vers les mains du chef.
+    /// C'est ce qui permet au reliquat de se reporter au lendemain.
+    /// </summary>
     public async Task<IActionResult> Index(long? previsionId, CancellationToken ct)
     {
-        var q = _uow.Decaissements.Query().AsNoTracking()
-            .Include(d => d.PrevisionJournaliere).ThenInclude(p => p.Chantier)
-            .Include(d => d.CompteBancaire)
-            .AsQueryable();
+        // --- Les remises : une par prévision ouverte ---
+        var remisesQuery = _uow.Previsions.Query().AsNoTracking()
+            .Where(p => p.Statut == StatutPrevision.Executee
+                        || p.Statut == StatutPrevision.RapportSoumis
+                        || p.Statut == StatutPrevision.Cloturee);
 
         if (previsionId.HasValue)
-            q = q.Where(d => d.PrevisionJournaliereId == previsionId.Value);
+            remisesQuery = remisesQuery.Where(p => p.Id == previsionId.Value);
 
-        var liste = await q.OrderByDescending(d => d.Date).ThenByDescending(d => d.Id)
-            .Take(300).ToListAsync(ct);
+        var remises = await remisesQuery
+            .OrderByDescending(p => p.DateExecution)
+            .Take(300)
+            .Select(p => new LigneSortie(
+                p.DateExecution ?? p.DatePrevision,
+                p.Chantier.Nom,
+                p.Reference,
+                p.Id,
+                true,
+                p.Chantier.Responsable ?? "Chef de chantier",
+                "Remise de l'enveloppe du " + p.DatePrevision.ToString("dd/MM/yyyy"),
+                p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Quantite * l.PrixUnitaireEstime),
+                null,
+                p.AccuseNomSignataire))
+            .ToListAsync(ct);
+
+        // --- Les paiements détaillés ---
+        var paiementsQuery = _uow.Decaissements.Query().AsNoTracking().AsQueryable();
+        if (previsionId.HasValue)
+            paiementsQuery = paiementsQuery.Where(d => d.PrevisionJournaliereId == previsionId.Value);
+
+        var paiements = await paiementsQuery
+            .OrderByDescending(d => d.Date)
+            .Take(300)
+            .Select(d => new LigneSortie(
+                d.Date,
+                d.PrevisionJournaliere.Chantier.Nom,
+                d.PrevisionJournaliere.Reference,
+                d.PrevisionJournaliereId,
+                false,
+                d.Beneficiaire,
+                d.Motif,
+                d.Montant,
+                d.Mode,
+                d.AccuseNom))
+            .ToListAsync(ct);
+
+        var liste = remises.Concat(paiements)
+            .OrderByDescending(l => l.Date)
+            .ThenByDescending(l => l.EstRemise)   // la remise d'abord, puis ses paiements
+            .ToList();
 
         ViewBag.PrevisionId = previsionId;
+        ViewBag.TotalRemis = remises.Sum(r => r.Montant);
+        ViewBag.TotalDistribue = paiements.Sum(p => p.Montant);
         return View(liste);
     }
 
@@ -122,3 +174,19 @@ public class DecaissementController : Controller
 
 /// <summary>Entrée de la liste déroulante des comptes débitables.</summary>
 public record OptionCompte(long Id, string Libelle);
+
+/// <summary>
+/// Ligne du journal des sorties d'argent, qu'il s'agisse d'une remise d'enveloppe
+/// (générée à l'exécution) ou d'un paiement détaillé (saisi à la main).
+/// </summary>
+public record LigneSortie(
+    DateTime Date,
+    string Chantier,
+    string Reference,
+    long PrevisionId,
+    bool EstRemise,
+    string Beneficiaire,
+    string Motif,
+    decimal Montant,
+    ModePaiement? Mode,
+    string? Signataire);

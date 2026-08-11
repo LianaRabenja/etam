@@ -115,37 +115,65 @@
             }
         </div>
 
-        @if (!Model.Decaissements.Any(d => !d.IsDeleted))
-        {
-            <p class="text-muted mb-0">
-                Aucune sortie d'argent pour l'instant. Le compte n'a pas encore été débité.
-            </p>
-        }
-        else
-        {
-            <table class="table table-sm align-middle">
-                <thead><tr>
-                    <th>Date</th><th>Bénéficiaire</th><th>Motif</th>
-                    <th class="text-end">Montant</th><th>Justificatif</th>
-                </tr></thead>
-                <tbody>
+        <table class="table table-sm align-middle">
+            <thead><tr>
+                <th>Date</th><th>Nature</th><th>Bénéficiaire</th><th>Motif</th>
+                <th class="text-end">Montant</th><th>Pièce</th>
+            </tr></thead>
+            <tbody>
+                @* La remise est générée à l'exécution : elle n'est pas saisie. *@
+                <tr class="table-light">
+                    <td class="small">@Model.DateExecution?.ToString("dd/MM HH:mm")</td>
+                    <td><span class="badge bg-primary">remise</span></td>
+                    <td class="fw-semibold">@(Model.Chantier?.Responsable ?? "Chef de chantier")</td>
+                    <td class="small">
+                        Sortie de banque à l'ouverture de la prévision
+                        @if (Model.EstAccuseeReception)
+                        {
+                            <span class="text-success">— reçu signé par @Model.AccuseNomSignataire</span>
+                        }
+                        else
+                        {
+                            <span class="text-warning">— réception non signée</span>
+                        }
+                    </td>
+                    <td class="text-end fw-semibold">@Model.Total.ToString("N0") Ar</td>
+                    <td></td>
+                </tr>
+
                 @foreach (var d in Model.Decaissements.Where(x => !x.IsDeleted).OrderBy(x => x.Date))
                 {
                     <tr>
                         <td class="small">@d.Date.ToString("dd/MM HH:mm")</td>
+                        <td><span class="badge bg-success">paiement</span></td>
                         <td class="fw-semibold">@d.Beneficiaire</td>
                         <td class="small">@d.Motif</td>
                         <td class="text-end fw-semibold">@d.Montant.ToString("N0") Ar</td>
                         <td class="small text-muted">@d.Reference</td>
                     </tr>
                 }
-                </tbody>
-                <tfoot><tr class="fw-semibold">
-                    <td colspan="3">Total sorti</td>
+            </tbody>
+            <tfoot>
+                <tr class="fw-semibold">
+                    <td colspan="4">Distribué et justifié</td>
                     <td class="text-end">@Model.MontantDecaisse.ToString("N0") Ar</td>
                     <td></td>
-                </tr></tfoot>
-            </table>
+                </tr>
+                <tr class="fw-semibold @(reliquat > 0 ? "text-warning" : "text-success")">
+                    <td colspan="4">Encore en main, reporté sur la journée suivante</td>
+                    <td class="text-end">@reliquat.ToString("N0") Ar</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        @if (!Model.Decaissements.Any(d => !d.IsDeleted))
+        {
+            <p class="text-muted small mb-0">
+                L'argent est sorti de la banque, mais aucun paiement n'a encore été
+                enregistré. Cliquez sur « Nouvelle sortie » à chaque fois que le chef
+                remet de l'argent à quelqu'un.
+            </p>
         }
     </div>
 
