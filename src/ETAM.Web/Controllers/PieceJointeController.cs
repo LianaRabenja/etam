@@ -49,8 +49,10 @@ public class PieceJointeController : Controller
     {
         if (previsionId is null && decaissementId is null && rapportTravailId is null)
         {
+            // Ne jamais rediriger vers l'en-tête Referer : il est souvent absent,
+            // et Redirect("") lève une exception au lieu d'afficher le message.
             TempData["Error"] = "Aucun élément de rattachement fourni.";
-            return Redirect(Request.Headers.Referer.ToString());
+            return RedirectToAction("Index", "Home");
         }
 
         if (fichiers is null || fichiers.Count == 0)

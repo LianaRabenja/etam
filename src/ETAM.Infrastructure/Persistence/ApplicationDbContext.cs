@@ -3,6 +3,7 @@ using ETAM.Domain.Common;
 using ETAM.Domain.Entities;
 using ETAM.Infrastructure.Identity;
 using ETAM.Infrastructure.Persistence.Interceptors;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -14,9 +15,19 @@ namespace ETAM.Infrastructure.Persistence;
 /// applique les configurations Fluent API, le filtre global de soft-delete et
 /// l'interception d'audit.
 /// </summary>
-public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionKeyContext
 {
     private readonly AuditableEntityInterceptor _auditInterceptor;
+
+    /// <summary>
+    /// Clés de chiffrement d'ASP.NET Core, stockées en base.
+    ///
+    /// Par défaut elles sont écrites sur le disque du serveur. Or l'hébergement
+    /// recrée le conteneur à chaque mise à jour et à chaque sortie de veille :
+    /// les clés étaient donc perdues, et les jetons de sécurité des formulaires
+    /// devenaient illisibles — d'où les erreurs 400 à la connexion.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,

@@ -8,6 +8,7 @@ using ETAM.Web.Middleware;
 using FluentValidation.AspNetCore;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -105,6 +106,16 @@ if (!string.IsNullOrWhiteSpace(hangfireConn))
     builder.Services.AddHangfireServer();
 }
 
+// ---------- Clés de chiffrement ----------
+// Elles servent à signer les jetons des formulaires et les cookies de connexion.
+// Stockées en base plutôt que sur le disque : l'hébergement recrée le conteneur
+// à chaque mise à jour et à chaque sortie de veille, ce qui effaçait les clés et
+// provoquait des erreurs 400 au moment de se connecter.
+// Le nom d'application doit rester stable : c'est lui qui relie les clés à l'app.
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<ApplicationDbContext>()
+    .SetApplicationName("ETAM");
+
 // ---------- Proxy inverse (Render, Nginx...) ----------
 // Sans cela, l'application croit recevoir du HTTP simple : les redirections
 // et les cookies « Secure » ne fonctionnent plus correctement.
@@ -120,6 +131,30 @@ var app = builder.Build();
 
 // Doit être appelé AVANT tout le reste du pipeline.
 app.UseForwardedHeaders();
+
+// ---------- Journalisation des réponses en erreur ----------
+// Un 400 renvoyé par ASP.NET Core arrive au navigateur avec un corps vide :
+// l'utilisateur voit « Cette page ne fonctionne pas » sans aucune explication,
+// et rien n'apparaît dans les journaux. Ce petit intermédiaire enregistre la
+// méthode, le chemin et le code, ce qui suffit à localiser la cause.
+app.Use(async (contexte, suivant) =>
+{
+    await suivant();
+
+    if (contexte.Response.StatusCode >= 400)
+    {
+        var journal = contexte.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ETAM.Requetes");
+
+        journal.LogWarning(
+            "Réponse {Code} sur {Methode} {Chemin}{Requete} — utilisateur {Utilisateur}",
+            contexte.Response.StatusCode,
+            contexte.Request.Method,
+            contexte.Request.Path,
+            contexte.Request.QueryString,
+            contexte.User?.Identity?.Name ?? "anonyme");
+    }
+});
 
 // Applique la culture ETAM à chaque requête (affichage ET lecture des formulaires).
 app.UseRequestLocalization(new RequestLocalizationOptions
