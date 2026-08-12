@@ -229,12 +229,14 @@ public class PrevisionService : IPrevisionService
                     $"reportés, déjà décaissé {enveloppe.MontantConsomme:N0} Ar.)");
             }
 
-            // L'argent ne sort PAS ici. L'exécution ouvre l'enveloppe et réserve le
-            // montant sur le mois ; la banque n'est débitée qu'au moment où le
-            // bénéficiaire signe la réception sur le chantier (AccuserReceptionAsync).
-            // On vérifie tout de même dès maintenant que le compte pourra suivre,
-            // pour ne pas ouvrir une enveloppe qu'on ne saura pas honorer.
-            var compte = await _uow.ComptesBancaires.Query().AsNoTracking()
+            // --- L'ARGENT SORT ICI ---
+            // C'est l'exécution de la prévision réelle qui fait sortir l'argent de
+            // la banque. Le reçu signé plus tard n'est qu'une trace écrite : il ne
+            // déclenche aucun mouvement.
+            //
+            // Seul le montant demandé ce jour sort. Le reliquat de la veille n'est
+            // pas redébité : il est déjà entre les mains du chef depuis hier.
+            var compte = await _uow.ComptesBancaires.Query()
                 .FirstOrDefaultAsync(c => c.ChantierId == p.ChantierId && c.EstActif, ct);
 
             if (compte is null)
@@ -242,7 +244,7 @@ public class PrevisionService : IPrevisionService
                 await _uow.RollbackAsync(ct);
                 return Result.Failure(
                     $"Aucun compte bancaire actif pour {chantier.Nom}. " +
-                    "Créez son compte dans le menu Banques avant d'ouvrir une prévision.");
+                    "Créez son compte dans le menu Banques avant d'exécuter une prévision.");
             }
 
             if (compte.Solde < total)
@@ -252,6 +254,21 @@ public class PrevisionService : IPrevisionService
                     $"Solde insuffisant sur {compte.Nom} : {compte.Solde:N0} Ar disponibles " +
                     $"pour une prévision de {total:N0} Ar.");
             }
+
+            compte.Solde -= total;
+            _uow.ComptesBancaires.Update(compte);
+
+            await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
+            {
+                CompteBancaireId = compte.Id,
+                Date = DateTime.UtcNow,
+                Type = TypeMouvementBancaire.Retrait,
+                Montant = total,
+                Beneficiaire = chantier.Responsable ?? "Chef de chantier",
+                Motif = $"{p.Reference} — prévision réelle du {p.DatePrevision:dd/MM/yyyy}",
+                ChantierId = p.ChantierId,
+                EstValide = true
+            }, ct);
 
             p.PrevisionMensuelleId = enveloppe.Id;
             p.ReportVeille = report;
@@ -268,9 +285,9 @@ public class PrevisionService : IPrevisionService
                 nouvelleValeur: $"Enveloppe ouverte : {total:N0} Ar + report {report:N0} Ar", ct: ct);
 
             _logger.LogInformation(
-                "Prévision {Ref} ouverte sur {Chantier} : plafond du jour {Plafond} Ar " +
-                "(dont {Report} Ar reportés). L'argent sortira à la signature du reçu.",
-                p.Reference, chantier.Nom, total + report, report);
+                "Prévision réelle {Ref} exécutée sur {Chantier} : {Total} Ar sortis de la banque, " +
+                "plafond du jour {Plafond} Ar (dont {Report} Ar reportés de la veille).",
+                p.Reference, chantier.Nom, total, total + report, report);
 
             return Result.Success();
         }
@@ -283,14 +300,13 @@ public class PrevisionService : IPrevisionService
     }
 
     /// <summary>
-    /// Le bénéficiaire signe la réception de l'argent, sur le chantier.
+    /// Le bénéficiaire signe le reçu sur le chantier.
     ///
-    /// C'EST ICI que l'argent quitte réellement la banque : tant que personne n'a
-    /// signé, le compte n'est pas touché. La signature et le débit sont donc
-    /// indissociables — on ne peut pas avoir l'un sans l'autre.
-    ///
-    /// Seul le montant demandé pour la journée sort. Le reliquat de la veille n'est
-    /// pas redébité : cet argent est déjà entre les mains du chef depuis hier.
+    /// L'argent est déjà sorti de la banque à l'exécution de la prévision réelle.
+    /// Cette signature ne déplace aucun argent : c'est la trace écrite attestant
+    /// que la personne l'a bien reçu. Elle conditionne en revanche la saisie des
+    /// sorties : on ne note pas de paiements sur un argent dont personne n'a
+    /// reconnu la réception.
     /// </summary>
     public async Task<Result> AccuserReceptionAsync(long id, string nomSignataire, CancellationToken ct = default)
     {
@@ -300,67 +316,21 @@ public class PrevisionService : IPrevisionService
         var p = await ChargerAsync(id, ct);
         if (p is null) return Result.Failure("Prévision introuvable.");
         if (p.Statut != StatutPrevision.Executee)
-            return Result.Failure("Seule une prévision ouverte peut faire l'objet d'un accusé de réception.");
+            return Result.Failure("Seule une prévision exécutée peut faire l'objet d'un reçu.");
         if (p.DateAccuseReception.HasValue)
-            return Result.Failure("La réception de cette enveloppe a déjà été signée.");
+            return Result.Failure("Le reçu de cette journée a déjà été signé.");
 
-        var chantier = await _uow.Chantiers.GetByIdAsync(p.ChantierId, ct);
-        if (chantier is null) return Result.Failure("Chantier introuvable.");
-
-        var montantASortir = p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Total);
-
-        var compte = await _uow.ComptesBancaires.Query()
-            .FirstOrDefaultAsync(c => c.ChantierId == p.ChantierId && c.EstActif, ct);
-        if (compte is null)
-            return Result.Failure($"Aucun compte bancaire actif pour {chantier.Nom}.");
-
-        if (compte.Solde < montantASortir)
-            return Result.Failure(
-                $"Solde insuffisant sur {compte.Nom} : {compte.Solde:N0} Ar disponibles " +
-                $"pour une remise de {montantASortir:N0} Ar.");
-
-        await _uow.BeginTransactionAsync(ct);
-        try
-        {
-            // L'argent sort du compte au moment de la signature.
-            compte.Solde -= montantASortir;
-            _uow.ComptesBancaires.Update(compte);
-
-            await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
-            {
-                CompteBancaireId = compte.Id,
-                Date = DateTime.UtcNow,
-                Type = TypeMouvementBancaire.Retrait,
-                Montant = montantASortir,
-                Beneficiaire = nomSignataire.Trim(),
-                Motif = $"{p.Reference} — reçu signé sur le chantier le {DateTime.UtcNow:dd/MM/yyyy}",
-                ChantierId = p.ChantierId,
-                EstValide = true
-            }, ct);
-
-            p.AccuseReceptionParId = _currentUser.UserId;
-            p.AccuseNomSignataire = nomSignataire.Trim();
-            p.DateAccuseReception = DateTime.UtcNow;
-            p.MontantAccuse = montantASortir + p.ReportVeille;
-            _uow.Previsions.Update(p);
-
-            await _uow.SaveChangesAsync(ct);
-            await _uow.CommitAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            await _uow.RollbackAsync(ct);
-            _logger.LogError(ex, "Échec de l'accusé de réception de la prévision {Id}.", id);
-            return Result.Failure("Erreur lors de l'enregistrement du reçu : " + ex.Message);
-        }
+        p.AccuseReceptionParId = _currentUser.UserId;
+        p.AccuseNomSignataire = nomSignataire.Trim();
+        p.DateAccuseReception = DateTime.UtcNow;
+        p.MontantAccuse = p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Total) + p.ReportVeille;
+        _uow.Previsions.Update(p);
+        await _uow.SaveChangesAsync(ct);
 
         await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(),
-            nouvelleValeur: $"Reçu signé par {nomSignataire.Trim()} — {montantASortir:N0} Ar sortis de la banque",
-            ct: ct);
+            nouvelleValeur: $"Reçu signé par {nomSignataire.Trim()} — {p.MontantAccuse:N0} Ar", ct: ct);
 
-        _logger.LogInformation(
-            "Reçu de {Ref} signé par {Nom} : {Montant} Ar retirés du compte.",
-            p.Reference, nomSignataire, montantASortir);
+        _logger.LogInformation("Reçu de {Ref} signé par {Nom}.", p.Reference, nomSignataire);
         return Result.Success();
     }
 

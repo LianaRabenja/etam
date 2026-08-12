@@ -62,30 +62,24 @@
                 </tr>
             }
 
-            @if (Model.EstAccuseeReception)
-            {
-                solde += Model.Total;
-                <tr>
-                    <td class="small text-muted">@Model.DateAccuseReception?.ToString("dd/MM HH:mm")</td>
-                    <td>
-                        Argent reçu à la banque
-                        <span class="text-muted small">— signé par @Model.AccuseNomSignataire</span>
-                    </td>
-                    <td class="text-end text-success fw-semibold">@Model.Total.ToString("N0")</td>
-                    <td></td>
-                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
-                </tr>
-            }
-            else
-            {
-                <tr class="table-warning">
-                    <td class="small text-muted">—</td>
-                    <td colspan="4">
-                        <strong>@Model.Total.ToString("N0") Ar</strong> attendus.
-                        L'argent est encore en banque : il ne sortira qu'à la signature du reçu.
-                    </td>
-                </tr>
-            }
+            @{ solde += Model.Total; }
+            <tr>
+                <td class="small text-muted">@Model.DateExecution?.ToString("dd/MM HH:mm")</td>
+                <td>
+                    Argent retiré de la banque
+                    @if (Model.EstAccuseeReception)
+                    {
+                        <span class="text-success small">— reçu signé par @Model.AccuseNomSignataire</span>
+                    }
+                    else
+                    {
+                        <span class="text-warning small">— reçu pas encore signé</span>
+                    }
+                </td>
+                <td class="text-end text-success fw-semibold">@Model.Total.ToString("N0")</td>
+                <td></td>
+                <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+            </tr>
 
             @foreach (var d in sorties)
             {
@@ -119,7 +113,7 @@
     {
         <div class="etam-card p-4 mb-3 border-warning">
             <h6 class="text-warning mb-2">
-                <i class="fa-solid fa-signature me-1"></i> Signer le reçu pour retirer l'argent
+                <i class="fa-solid fa-signature me-1"></i> Signer le reçu de l'argent remis
             </h6>
             <form asp-action="AccuserReception" asp-route-id="@Model.Id" method="post"
                   class="row g-2 align-items-end">

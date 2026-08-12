@@ -49,8 +49,9 @@
 </div>
 
 <p class="text-muted small">
-    <span class="badge bg-primary">reçu</span> l'argent sort de la banque &nbsp;·&nbsp;
-    <span class="badge bg-success">sortie</span> le chef donne l'argent à quelqu'un
+    <span class="badge bg-primary">retrait</span> la prévision réelle est exécutée : l'argent sort de la banque
+    &nbsp;·&nbsp;
+    <span class="badge bg-success">sortie</span> le chef donne cet argent à quelqu'un
 </p>
 
 <div class="etam-card p-3">
@@ -77,7 +78,7 @@ else
                 <td>
                     @if (l.EstRemise)
                     {
-                        <span class="badge bg-primary">reçu</span>
+                        <span class="badge bg-primary">retrait</span>
                     }
                     else
                     {
@@ -94,7 +95,7 @@ else
                     }
                     else if (l.EstRemise)
                     {
-                        <span class="text-warning small">— réception non signée</span>
+                        <span class="text-warning small">— reçu pas encore signé</span>
                     }
                 </td>
                 <td class="small text-muted">@LibelleMode(l.Mode)</td>
