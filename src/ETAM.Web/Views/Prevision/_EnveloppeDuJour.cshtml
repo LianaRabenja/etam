@@ -1,241 +1,181 @@
 @model ETAM.Domain.Entities.PrevisionJournaliere
 @using ETAM.Domain.Enums
 @*
-    Bloc « argent de la journée » : accusé de réception, plafond du jour avec report
-    de la veille, décaissements réels et justificatifs.
-    Inséré dans Prevision/Details.cshtml.
+    La caisse du chantier, présentée comme la fiche de stock du magasinier :
+    une entrée, des sorties, un reste. Rien d'autre.
 *@
 
 @if (Model.Statut == StatutPrevision.Executee || Model.Statut == StatutPrevision.RapportSoumis
      || Model.Statut == StatutPrevision.Cloturee)
 {
-    var reliquat = Model.PlafondDuJour - Model.MontantDecaisse;
-    var pct = Model.PourcentageDecaisse;
+    var reste = Model.PlafondDuJour - Model.MontantDecaisse;
+    var sorties = Model.Decaissements.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToList();
 
-    <!-- ===== L'argent de la journée ===== -->
     <div class="etam-card p-4 mb-3">
-        <h6 class="mb-3">L'argent de cette journée</h6>
 
-        <div class="row text-center g-3">
-            <div class="col-6 col-md-3">
-                <div class="text-muted small">Demandé</div>
-                <div class="fs-6 fw-semibold">@Model.Total.ToString("N0") Ar</div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="text-muted small">Reporté de la veille</div>
-                <div class="fs-6 fw-semibold @(Model.ReportVeille > 0 ? "text-info" : "text-muted")">
-                    @(Model.ReportVeille > 0 ? "+ " + Model.ReportVeille.ToString("N0") + " Ar" : "aucun")
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="text-muted small">Plafond du jour</div>
-                <div class="fs-5 fw-bold text-primary">@Model.PlafondDuJour.ToString("N0") Ar</div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="text-muted small">Reste à dépenser</div>
-                <div class="fs-5 fw-bold @(reliquat <= 0 ? "text-muted" : "text-success")">
-                    @reliquat.ToString("N0") Ar
-                </div>
-            </div>
-        </div>
-
-        <div class="progress mt-3" style="height:10px">
-            <div class="progress-bar @(pct >= 100 ? "bg-danger" : pct >= 50 ? "bg-warning" : "bg-success")"
-                 style="width:@(Math.Min(pct, 100).ToString("F0"))%"></div>
-        </div>
-        <div class="small text-muted mt-1">
-            Sorti : @Model.MontantDecaisse.ToString("N0") Ar — @pct.ToString("F1") % du plafond.
-            @if (reliquat > 0 && Model.Statut == StatutPrevision.Cloturee)
-            {
-                <span class="text-info">Ce reste a été reporté sur la journée suivante.</span>
-            }
-        </div>
-    </div>
-
-    <!-- ===== Accusé de réception ===== -->
-    @if (!Model.DateAccuseReception.HasValue)
-    {
-        <div class="etam-card p-4 mb-3 border-warning">
-            <h6 class="text-warning mb-2">
-                <i class="fa-solid fa-hand-holding-dollar me-1"></i>
-                Réception de l'argent à signer
-            </h6>
-            <p class="text-muted small mb-3">
-                Tant que la réception n'est pas signée, aucune sortie d'argent n'est possible
-                sur cette prévision.
-            </p>
-
-            @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier"))
-            {
-                <form asp-action="AccuserReception" asp-route-id="@Model.Id" method="post"
-                      class="row g-2 align-items-end">
-                    @Html.AntiForgeryToken()
-                    <div class="col-md-6">
-                        <label class="form-label small">Nom de la personne qui reçoit l'argent</label>
-                        <input name="nomSignataire" class="form-control" required
-                               placeholder="Nom et prénom du chef de chantier" />
-                    </div>
-                    <div class="col-md-4">
-                        <button class="btn btn-warning">
-                            <i class="fa-solid fa-signature me-1"></i>
-                            Je reconnais avoir reçu @Model.PlafondDuJour.ToString("N0") Ar
-                        </button>
-                    </div>
-                </form>
-            }
-        </div>
-    }
-    else
-    {
-        <div class="alert alert-success d-flex justify-content-between align-items-center">
-            <div>
-                <i class="fa-solid fa-circle-check me-1"></i>
-                <strong>Réception signée par @Model.AccuseNomSignataire</strong>
-                le @Model.DateAccuseReception?.ToString("dd/MM/yyyy à HH:mm")
-                pour @Model.MontantAccuse?.ToString("N0") Ar.
-            </div>
-            <a asp-controller="Prevision" asp-action="AccuseRecu" asp-route-id="@Model.Id"
-               target="_blank" class="btn btn-sm btn-outline-success">
-                <i class="fa-solid fa-print me-1"></i> Imprimer l'accusé
-            </a>
-        </div>
-    }
-
-    <!-- ===== Décaissements ===== -->
-    <div class="etam-card p-4 mb-3">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0">Sorties d'argent</h6>
+            <h6 class="mb-0">La caisse du chantier</h6>
             @if (Model.PeutDecaisser
                  && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier")))
             {
                 <a asp-controller="Decaissement" asp-action="Create" asp-route-previsionId="@Model.Id"
                    class="btn btn-primary btn-sm">
-                    <i class="fa-solid fa-plus me-1"></i> Nouvelle sortie
+                    <i class="fa-solid fa-plus me-1"></i> Noter une sortie
                 </a>
             }
         </div>
 
-        <table class="table table-sm align-middle">
-            <thead><tr>
-                <th>Date</th><th>Nature</th><th>Bénéficiaire</th><th>Motif</th>
-                <th class="text-end">Montant</th><th>Pièce</th>
-            </tr></thead>
-            <tbody>
-                @* La remise est générée à l'exécution : elle n'est pas saisie. *@
-                <tr class="table-light">
-                    <td class="small">@Model.DateExecution?.ToString("dd/MM HH:mm")</td>
-                    <td><span class="badge bg-primary">remise</span></td>
-                    <td class="fw-semibold">@(Model.Chantier?.Responsable ?? "Chef de chantier")</td>
-                    <td class="small">
-                        Sortie de banque à l'ouverture de la prévision
-                        @if (Model.EstAccuseeReception)
-                        {
-                            <span class="text-success">— reçu signé par @Model.AccuseNomSignataire</span>
-                        }
-                        else
-                        {
-                            <span class="text-warning">— réception non signée</span>
-                        }
-                    </td>
-                    <td class="text-end fw-semibold">@Model.Total.ToString("N0") Ar</td>
-                    <td></td>
-                </tr>
+        @* ---- Le seul chiffre à retenir ---- *@
+        <div class="text-center py-3 mb-3 rounded"
+             style="background:@(reste > 0 ? "#f0fdf4" : "#f8fafc")">
+            <div class="text-muted small">Reste en main</div>
+            <div class="fw-bold" style="font-size:2rem;color:@(reste > 0 ? "#047857" : "#64748b")">
+                @reste.ToString("N0") Ar
+            </div>
+        </div>
 
-                @foreach (var d in Model.Decaissements.Where(x => !x.IsDeleted).OrderBy(x => x.Date))
-                {
-                    <tr>
-                        <td class="small">@d.Date.ToString("dd/MM HH:mm")</td>
-                        <td><span class="badge bg-success">paiement</span></td>
-                        <td class="fw-semibold">@d.Beneficiaire</td>
-                        <td class="small">@d.Motif</td>
-                        <td class="text-end fw-semibold">@d.Montant.ToString("N0") Ar</td>
-                        <td class="small text-muted">@d.Reference</td>
-                    </tr>
-                }
+        @* ---- La fiche : entrée, sortie, reste ---- *@
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:110px">Date</th>
+                    <th>Motif</th>
+                    <th class="text-end" style="width:120px">Entrée</th>
+                    <th class="text-end" style="width:120px">Sortie</th>
+                    <th class="text-end" style="width:130px">Reste</th>
+                </tr>
+            </thead>
+            <tbody>
+            @{
+                var solde = 0m;
+            }
+
+            @if (Model.ReportVeille > 0)
+            {
+                solde += Model.ReportVeille;
+                <tr>
+                    <td class="small text-muted">@Model.DatePrevision.ToString("dd/MM")</td>
+                    <td>Reste de la journée précédente</td>
+                    <td class="text-end text-success">@Model.ReportVeille.ToString("N0")</td>
+                    <td></td>
+                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+                </tr>
+            }
+
+            @if (Model.EstAccuseeReception)
+            {
+                solde += Model.Total;
+                <tr>
+                    <td class="small text-muted">@Model.DateAccuseReception?.ToString("dd/MM HH:mm")</td>
+                    <td>
+                        Argent reçu à la banque
+                        <span class="text-muted small">— signé par @Model.AccuseNomSignataire</span>
+                    </td>
+                    <td class="text-end text-success fw-semibold">@Model.Total.ToString("N0")</td>
+                    <td></td>
+                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+                </tr>
+            }
+            else
+            {
+                <tr class="table-warning">
+                    <td class="small text-muted">—</td>
+                    <td colspan="4">
+                        <strong>@Model.Total.ToString("N0") Ar</strong> attendus.
+                        L'argent est encore en banque : il ne sortira qu'à la signature du reçu.
+                    </td>
+                </tr>
+            }
+
+            @foreach (var d in sorties)
+            {
+                solde -= d.Montant;
+                <tr>
+                    <td class="small text-muted">@d.Date.ToString("dd/MM HH:mm")</td>
+                    <td>
+                        @d.Motif
+                        <span class="text-muted small">— @d.Beneficiaire</span>
+                    </td>
+                    <td></td>
+                    <td class="text-end text-danger">@d.Montant.ToString("N0")</td>
+                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+                </tr>
+            }
             </tbody>
-            <tfoot>
-                <tr class="fw-semibold">
-                    <td colspan="4">Distribué et justifié</td>
-                    <td class="text-end">@Model.MontantDecaisse.ToString("N0") Ar</td>
-                    <td></td>
-                </tr>
-                <tr class="fw-semibold @(reliquat > 0 ? "text-warning" : "text-success")">
-                    <td colspan="4">Encore en main, reporté sur la journée suivante</td>
-                    <td class="text-end">@reliquat.ToString("N0") Ar</td>
-                    <td></td>
-                </tr>
-            </tfoot>
         </table>
 
-        @if (!Model.Decaissements.Any(d => !d.IsDeleted))
+        @if (Model.EstAccuseeReception && !sorties.Any())
         {
-            <p class="text-muted small mb-0">
-                L'argent est sorti de la banque, mais aucun paiement n'a encore été
-                enregistré. Cliquez sur « Nouvelle sortie » à chaque fois que le chef
-                remet de l'argent à quelqu'un.
+            <p class="text-muted small mt-3 mb-0">
+                Aucune sortie notée. Cliquez sur « Noter une sortie » à chaque fois que
+                le chef donne de l'argent à quelqu'un.
             </p>
         }
     </div>
 
-    <!-- ===== Justificatifs ===== -->
-    <div class="etam-card p-4 mb-3">
-        <h6 class="mb-1">Factures et justificatifs</h6>
-        <p class="text-muted small mb-3">
-            Ils s'ajoutent en bas de cette page, en même temps que le compte rendu des travaux.
-        </p>
+    @* ---- Signature du reçu ---- *@
+    @if (!Model.DateAccuseReception.HasValue
+         && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier")))
+    {
+        <div class="etam-card p-4 mb-3 border-warning">
+            <h6 class="text-warning mb-2">
+                <i class="fa-solid fa-signature me-1"></i> Signer le reçu pour retirer l'argent
+            </h6>
+            <form asp-action="AccuserReception" asp-route-id="@Model.Id" method="post"
+                  class="row g-2 align-items-end">
+                @Html.AntiForgeryToken()
+                <div class="col-md-6">
+                    <label class="form-label small">Nom de la personne qui reçoit l'argent</label>
+                    <input name="nomSignataire" class="form-control" required placeholder="Nom et prénom" />
+                </div>
+                <div class="col-md-6">
+                    <button class="btn btn-warning">
+                        Je reconnais avoir reçu @Model.Total.ToString("N0") Ar
+                    </button>
+                </div>
+            </form>
+        </div>
+    }
+    else if (Model.EstAccuseeReception)
+    {
+        <div class="mb-3">
+            <a asp-controller="Prevision" asp-action="AccuseRecu" asp-route-id="@Model.Id"
+               target="_blank" class="btn btn-sm btn-outline-secondary">
+                <i class="fa-solid fa-print me-1"></i> Imprimer le reçu
+            </a>
+        </div>
+    }
 
-        @if (Model.PiecesJointes.Any(x => !x.IsDeleted))
-        {
-            <div class="row g-2 mb-3">
+    @* ---- Factures déjà jointes ---- *@
+    @if (Model.PiecesJointes.Any(x => !x.IsDeleted))
+    {
+        <div class="etam-card p-4 mb-3">
+            <h6 class="mb-3">Factures</h6>
+            <div class="row g-2">
                 @foreach (var pj in Model.PiecesJointes.Where(x => !x.IsDeleted).OrderBy(x => x.DateAjout))
                 {
                     <div class="col-6 col-md-3">
-                        <div class="border rounded p-2 h-100">
+                        <a asp-controller="PieceJointe" asp-action="Voir" asp-route-id="@pj.Id" target="_blank"
+                           class="d-block border rounded p-2 text-decoration-none text-body h-100">
                             @if (pj.EstImage)
                             {
-                                <a asp-controller="PieceJointe" asp-action="Voir" asp-route-id="@pj.Id" target="_blank">
-                                    <img src="@Url.Action("Voir", "PieceJointe", new { id = pj.Id })"
-                                         class="img-fluid rounded mb-2" style="max-height:130px;object-fit:cover;width:100%"
-                                         alt="@pj.NomFichier" />
-                                </a>
+                                <img src="@Url.Action("Voir", "PieceJointe", new { id = pj.Id })"
+                                     class="img-fluid rounded mb-2"
+                                     style="max-height:120px;object-fit:cover;width:100%" alt="@pj.NomFichier" />
                             }
                             else
                             {
-                                <a asp-controller="PieceJointe" asp-action="Voir" asp-route-id="@pj.Id" target="_blank"
-                                   class="d-block text-center py-4 text-danger">
-                                    <i class="fa-solid fa-file-pdf fa-2x"></i>
-                                </a>
+                                <div class="text-center py-4 text-danger"><i class="fa-solid fa-file-pdf fa-2x"></i></div>
                             }
-                            <div class="small text-truncate" title="@pj.NomFichier">@pj.NomFichier</div>
-                            @if (!string.IsNullOrEmpty(pj.NumeroPiece))
-                            {
-                                <div class="small text-muted">N° @pj.NumeroPiece</div>
-                            }
+                            <div class="small text-truncate">@(pj.NumeroPiece ?? pj.NomFichier)</div>
                             @if (pj.MontantFacture.HasValue)
                             {
                                 <div class="small fw-semibold">@pj.MontantFacture.Value.ToString("N0") Ar</div>
                             }
-                            <div class="small text-muted">@pj.TailleLisible</div>
-
-                            @if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant"))
-                            {
-                                <form asp-controller="PieceJointe" asp-action="Supprimer" asp-route-id="@pj.Id"
-                                      method="post" onsubmit="return confirm('Retirer ce justificatif ?');">
-                                    @Html.AntiForgeryToken()
-                                    <button class="btn btn-sm btn-outline-danger w-100 mt-1">Retirer</button>
-                                </form>
-                            }
-                        </div>
+                        </a>
                     </div>
                 }
             </div>
-        }
-        else
-        {
-            <p class="text-muted mb-0">
-                Aucune facture pour l'instant. Elles se joignent en bas de page,
-                avec le compte rendu des travaux.
-            </p>
-        }
-    </div>
+        </div>
+    }
 }

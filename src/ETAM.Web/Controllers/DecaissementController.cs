@@ -36,26 +36,25 @@ public class DecaissementController : Controller
     /// </summary>
     public async Task<IActionResult> Index(long? previsionId, CancellationToken ct)
     {
-        // --- Les remises : une par prévision ouverte ---
+        // --- Les remises : uniquement celles dont le reçu a été signé ---
+        // Sans signature, l'argent n'a pas quitté la banque : il n'y a rien à lister.
         var remisesQuery = _uow.Previsions.Query().AsNoTracking()
-            .Where(p => p.Statut == StatutPrevision.Executee
-                        || p.Statut == StatutPrevision.RapportSoumis
-                        || p.Statut == StatutPrevision.Cloturee);
+            .Where(p => p.DateAccuseReception != null);
 
         if (previsionId.HasValue)
             remisesQuery = remisesQuery.Where(p => p.Id == previsionId.Value);
 
         var remises = await remisesQuery
-            .OrderByDescending(p => p.DateExecution)
+            .OrderByDescending(p => p.DateAccuseReception)
             .Take(300)
             .Select(p => new LigneSortie(
-                p.DateExecution ?? p.DatePrevision,
+                p.DateAccuseReception!.Value,
                 p.Chantier.Nom,
                 p.Reference,
                 p.Id,
                 true,
-                p.Chantier.Responsable ?? "Chef de chantier",
-                "Remise de l'enveloppe du " + p.DatePrevision.ToString("dd/MM/yyyy"),
+                p.AccuseNomSignataire ?? "Chef de chantier",
+                "Reçu signé — enveloppe du " + p.DatePrevision.ToString("dd/MM/yyyy"),
                 p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Quantite * l.PrixUnitaireEstime),
                 null,
                 p.AccuseNomSignataire))
