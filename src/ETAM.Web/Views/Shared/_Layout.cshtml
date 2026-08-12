@@ -75,9 +75,11 @@
             @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
             @if (isAdmin || isRF || isChef) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
             @if (isAdmin || isRF || isChef) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
-            @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-calendar-day"></i> <b>5.</b> Prévision du jour</a></li> }
-            @if (isAdmin || isRF || isChef) { <li><a class="@Active("Decaissement")" href="/Decaissement/Index"><i class="fa-solid fa-money-bill-transfer"></i> <b>6.</b> Sorties d'argent</a></li> }
-            @if (isAdmin || isRF || isChef) { <li><a class="@Active("RapportsPrevision")" href="/RapportsPrevision/Index"><i class="fa-solid fa-clipboard-check"></i> <b>7.</b> Comptes rendus</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Prévision journalière</a></li> }
+            @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> <b>6.</b> Demande du chantier</a></li> }
+            @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-hand-holding-dollar"></i> <b>7.</b> Prévision réelle</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("Decaissement")" href="/Decaissement/Index"><i class="fa-solid fa-money-bill-transfer"></i> <b>8.</b> Sorties d'argent</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("RapportsPrevision")" href="/RapportsPrevision/Index"><i class="fa-solid fa-clipboard-check"></i> <b>9.</b> Comptes rendus</a></li> }
 
             @if (voitStock || isAdmin) { <li class="section">Au quotidien</li> }
             @if (voitStock) { <li><a class="@Active("Materiaux")" href="/Materiaux/Index"><i class="fa-solid fa-trowel-bricks"></i> Stock des matériaux</a></li> }
@@ -95,7 +97,6 @@
                 @if (isAdmin) { <li><a class="@Active("Fournisseurs")" href="/Fournisseurs/Index"><i class="fa-solid fa-truck-field"></i> Fournisseurs</a></li> }
                 @if (isAdmin) { <li><a class="@Active("Dettes")" href="/Dettes/Index"><i class="fa-solid fa-file-invoice-dollar"></i> Dettes fournisseurs</a></li> }
                 @if (isAdmin) { <li><a href="/Utilisateurs/Index"><i class="fa-solid fa-users"></i> Utilisateurs</a></li> }
-                @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> Demandes d'achat</a></li> }
                 @if (voitRapportsTravail) { <li><a class="@Active("RapportsTravail")" href="/RapportsTravail/Index"><i class="fa-solid fa-file-signature"></i> Rapports de travail</a></li> }
                 @if (isAdmin) { <li><a href="/BudgetComptes/Index"><i class="fa-solid fa-wallet"></i> Budget du bureau</a></li> }
                 @if (isAdmin) { <li><a href="/BudgetMateriel/Index"><i class="fa-solid fa-boxes-stacked"></i> Budget matériel</a></li> }

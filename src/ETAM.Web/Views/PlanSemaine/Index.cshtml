@@ -1,0 +1,184 @@
+@model List<ETAM.Web.Controllers.JourDeLaSemaine>
+@{
+    ViewData["Title"] = "Prévision journalière";
+    var lundi = (DateTime)ViewBag.Lundi;
+    var chantierId = ViewBag.ChantierId as long?;
+    var enveloppe = ViewBag.Enveloppe as ETAM.Domain.Entities.PrevisionMensuelle;
+    var totalPrevu = Model.Sum(j => j.MontantPrevu);
+    var totalDemande = Model.Sum(j => j.MontantDemande);
+    var peutModifier = User.IsInRole("Administrateur") || User.IsInRole("Correspondant");
+}
+
+<div class="mb-3">
+    <h5 class="mb-0">Prévision journalière</h5>
+    <small class="text-muted">
+Ce qu'on prévoit de dépenser chaque jour de la semaine, à l'intérieur de
+        l'enveloppe du mois. C'est une prévision, pas une sortie : aucun argent
+        n'est engagé ici.
+    </small>
+</div>
+
+<!-- Choix du chantier et de la semaine -->
+<form method="get" class="etam-card p-3 mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label small text-muted mb-1">Chantier</label>
+            <select name="chantierId" class="form-select" onchange="this.form.submit()">
+                <option value="">— choisir un chantier —</option>
+                @foreach (var c in (ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>)
+                                   ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+                {
+                    <option value="@c.Id" selected="@(chantierId == c.Id)">@c.Nom</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small text-muted mb-1">Semaine du</label>
+            <input name="jour" type="date" class="form-control"
+                   value="@lundi.ToString("yyyy-MM-dd")" onchange="this.form.submit()" />
+        </div>
+        <div class="col-md-4 d-flex gap-2">
+            <a class="btn btn-outline-secondary"
+               href="@Url.Action("Index", new { chantierId, jour = lundi.AddDays(-7).ToString("yyyy-MM-dd") })">
+                <i class="fa-solid fa-chevron-left"></i> Semaine précédente
+            </a>
+            <a class="btn btn-outline-secondary"
+               href="@Url.Action("Index", new { chantierId, jour = lundi.AddDays(7).ToString("yyyy-MM-dd") })">
+                Suivante <i class="fa-solid fa-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+</form>
+
+@if (chantierId is null)
+{
+    <div class="alert alert-light border">Choisissez un chantier pour voir sa semaine.</div>
+}
+else if (enveloppe is null)
+{
+    <div class="alert alert-warning">
+        <strong>Pas d'enveloppe pour ce mois.</strong>
+        Créez et ouvrez l'enveloppe du mois avant d'établir la prévision de la semaine.
+        <a asp-controller="PrevisionMensuelle" asp-action="Create" class="alert-link">Créer l'enveloppe</a>
+    </div>
+}
+else
+{
+    <div class="etam-card p-3 mb-3">
+        <div class="row text-center g-3">
+            <div class="col-4">
+                <div class="text-muted small">Enveloppe du mois</div>
+                <div class="fs-6 fw-semibold">@enveloppe.EnveloppeTotale.ToString("N0") Ar</div>
+            </div>
+            <div class="col-4">
+                <div class="text-muted small">Prévu cette semaine</div>
+                <div class="fs-5 fw-bold text-primary">@totalPrevu.ToString("N0") Ar</div>
+            </div>
+            <div class="col-4">
+                <div class="text-muted small">Sorti réellement</div>
+                <div class="fs-5 fw-bold @(totalDemande > totalPrevu ? "text-danger" : "text-success")">
+                    @totalDemande.ToString("N0") Ar
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form asp-action="Enregistrer" method="post" class="etam-card p-3">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="chantierId" value="@chantierId" />
+        <input type="hidden" name="lundi" value="@lundi.ToString("yyyy-MM-dd")" />
+
+        <table class="table align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:150px">Jour</th>
+                    <th style="width:180px">Prévu (Ar)</th>
+                    <th>Ce qui est prévu de faire</th>
+                    <th class="text-end" style="width:150px">Sorti réellement</th>
+                    <th class="text-end" style="width:130px">Écart</th>
+                    <th style="width:110px"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var j in Model)
+            {
+                var weekend = j.Date.DayOfWeek == DayOfWeek.Sunday;
+                <tr class="@(weekend ? "table-light" : "")">
+                    <td>
+                        <strong>@j.NomDuJour</strong>
+                        <div class="small text-muted">@j.Date.ToString("dd/MM")</div>
+                        <input type="hidden" name="dates" value="@j.Date.ToString("yyyy-MM-dd")" />
+                    </td>
+                    <td>
+                        <input name="montants" type="number" step="1" min="0"
+                               class="form-control @(peutModifier ? "" : "bg-light")"
+                               readonly="@(!peutModifier)"
+                               value="@(j.MontantPrevu > 0 ? j.MontantPrevu.ToString("0", System.Globalization.CultureInfo.InvariantCulture) : "0")" />
+                    </td>
+                    <td>
+                        <input name="observations" class="form-control form-control-sm"
+                               readonly="@(!peutModifier)"
+                               placeholder="Coulage dalle, ferraillage..." value="@j.Observation" />
+                    </td>
+                    <td class="text-end">
+                        @if (j.RienDemande)
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                        else
+                        {
+                            <span class="fw-semibold">@j.MontantDemande.ToString("N0")</span>
+                            <div class="small text-muted">@j.NombreDemandes prévision(s) réelle(s)</div>
+                        }
+                    </td>
+                    <td class="text-end">
+                        @if (j.RienDemande || j.MontantPrevu == 0)
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                        else if (j.Ecart > 0)
+                        {
+                            <span class="text-danger fw-semibold">+ @j.Ecart.ToString("N0")</span>
+                        }
+                        else if (j.Ecart < 0)
+                        {
+                            <span class="text-success">@j.Ecart.ToString("N0")</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">juste</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        @if (j.PremiereDemandeId.HasValue)
+                        {
+                            <a asp-controller="Prevision" asp-action="Details" asp-route-id="@j.PremiereDemandeId"
+                               class="btn btn-sm btn-outline-primary">Voir</a>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td>Total de la semaine</td>
+                    <td class="text-end">@totalPrevu.ToString("N0")</td>
+                    <td></td>
+                    <td class="text-end">@totalDemande.ToString("N0")</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        @if (peutModifier)
+        {
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">Enregistrer la prévision de la semaine</button>
+            </div>
+            <p class="text-muted small mt-2 mb-0">
+                Laissez un jour à 0 s'il n'y a rien de prévu. Le total de toutes les semaines
+                ne peut pas dépasser l'enveloppe du mois.
+            </p>
+        }
+    </form>
+}

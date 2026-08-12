@@ -16,6 +16,13 @@ public class PrevisionJournaliere : BaseEntity
     public long? PrevisionMensuelleId { get; set; }
     public PrevisionMensuelle? PrevisionMensuelle { get; set; }
 
+    /// <summary>
+    /// Journée du plan hebdomadaire à laquelle cette demande se rattache.
+    /// Permet de comparer ce qui était prévu pour ce jour et ce qui a été demandé.
+    /// </summary>
+    public long? PlanJournalierId { get; set; }
+    public PlanJournalier? PlanJournalier { get; set; }
+
     public DateTime DatePrevision { get; set; }
     public string Reference { get; set; } = null!;
 

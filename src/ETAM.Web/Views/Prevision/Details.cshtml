@@ -30,6 +30,10 @@
         _ => s.ToString()
     };
 }
+
+@* Où en est cette journée, et qu'est-ce qu'il faut faire maintenant. *@
+@await Html.PartialAsync("_OuEnSommesNous", Model)
+
 <div class="row g-4">
     <div class="col-lg-8">
         <div class="etam-card p-4">

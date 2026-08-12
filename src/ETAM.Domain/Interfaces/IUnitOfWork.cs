@@ -15,6 +15,7 @@ public interface IUnitOfWork : IDisposable
     IGenericRepository<PrevisionLigne> PrevisionLignes { get; }
     IGenericRepository<PrevisionMensuelle> PrevisionsMensuelles { get; }
     IGenericRepository<PrevisionMensuelleLigne> PrevisionMensuelleLignes { get; }
+    IGenericRepository<PlanJournalier> PlansJournaliers { get; }
     IGenericRepository<Decaissement> Decaissements { get; }
     IGenericRepository<PieceJointe> PiecesJointes { get; }
     IGenericRepository<PrevisionGlobale> PrevisionsGlobales { get; }

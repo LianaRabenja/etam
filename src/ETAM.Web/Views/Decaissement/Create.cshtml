@@ -8,36 +8,26 @@
 
 <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
-        <h5 class="mb-0">Sortie d'argent</h5>
-        <small class="text-muted">@p.Chantier?.Nom — prévision du @p.DatePrevision.ToString("dd/MM/yyyy")</small>
+        <h5 class="mb-0">Noter une sortie d'argent</h5>
+        <small class="text-muted">
+            @p.Chantier?.Nom — journée du @p.DatePrevision.ToString("dd/MM/yyyy")
+        </small>
     </div>
     <a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-outline-secondary btn-sm">
         Retour
     </a>
 </div>
 
-<!-- Ce qui reste à dépenser aujourd'hui -->
-<div class="etam-card p-3 mb-3">
-    <div class="row text-center g-3">
-        <div class="col-6 col-md-3">
-            <div class="text-muted small">Demandé aujourd'hui</div>
-            <div class="fs-6 fw-semibold">@p.Total.ToString("N0") Ar</div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="text-muted small">Reporté de la veille</div>
-            <div class="fs-6 fw-semibold @(p.ReportVeille > 0 ? "text-info" : "text-muted")">
-                @(p.ReportVeille > 0 ? "+ " + p.ReportVeille.ToString("N0") + " Ar" : "aucun")
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="text-muted small">Déjà sorti</div>
-            <div class="fs-6 fw-semibold">@p.MontantDecaisse.ToString("N0") Ar</div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="text-muted small">Reste disponible</div>
-            <div class="fs-4 fw-bold text-success">@reliquat.ToString("N0") Ar</div>
-        </div>
-    </div>
+<div class="alert alert-light border">
+    <strong>À quoi sert cet écran ?</strong>
+    Le chef a de l'argent en main. Chaque fois qu'il en donne à quelqu'un — un maçon,
+    un fournisseur, un transporteur — on le note ici. C'est ce qui permet de savoir,
+    à tout moment, où est passé l'argent.
+</div>
+
+<div class="text-center py-3 mb-3 rounded" style="background:#f0fdf4">
+    <div class="text-muted small">Argent encore en main</div>
+    <div class="fw-bold" style="font-size:2rem;color:#047857">@reliquat.ToString("N0") Ar</div>
 </div>
 
 <form asp-action="Create" method="post" class="etam-card p-4">
@@ -46,31 +36,32 @@
 
     <div class="row g-3">
         <div class="col-md-4">
-            <label class="form-label">Montant (Ar)</label>
+            <label class="form-label">Combien ? <span class="text-danger">*</span></label>
             <input name="Montant" type="number" step="1" min="1" max="@reliquat.ToString(System.Globalization.CultureInfo.InvariantCulture)"
                    class="form-control form-control-lg" placeholder="190000" required autofocus />
-            <div class="form-text">Maximum @reliquat.ToString("N0") Ar</div>
+            <div class="form-text">Sans espace ni virgule. Maximum @reliquat.ToString("N0") Ar.</div>
         </div>
 
         <div class="col-md-4">
-            <label class="form-label">Bénéficiaire</label>
-            <input name="Beneficiaire" class="form-control" placeholder="Nom de la personne ou du fournisseur" required />
-            <div class="form-text">Qui a reçu l'argent.</div>
+            <label class="form-label">À qui ? <span class="text-danger">*</span></label>
+            <input name="Beneficiaire" class="form-control" placeholder="RAKOTO Jean" required />
+            <div class="form-text">Le nom de la personne ou de l'entreprise qui reçoit l'argent.</div>
         </div>
 
         <div class="col-md-4">
-            <label class="form-label">Date</label>
+            <label class="form-label">Quel jour ?</label>
             <input name="Date" type="date" class="form-control"
                    value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
         </div>
 
         <div class="col-md-8">
-            <label class="form-label">Motif</label>
-            <input name="Motif" class="form-control" placeholder="Achat de 3 sacs de ciment" required />
+            <label class="form-label">Pour quoi ? <span class="text-danger">*</span></label>
+            <input name="Motif" class="form-control" placeholder="Achat de gravillon pour la rampe" required />
+            <div class="form-text">En quelques mots, ce que cet argent a payé.</div>
         </div>
 
         <div class="col-md-4">
-            <label class="form-label">Mode de paiement</label>
+            <label class="form-label">Payé comment ?</label>
             <select name="Mode" class="form-select">
                 <option value="@((int)ModePaiement.Especes)">Espèces</option>
                 <option value="@((int)ModePaiement.Cheque)">Chèque</option>
@@ -80,7 +71,7 @@
         </div>
 
         <div class="col-md-6">
-            <label class="form-label">Compte débité</label>
+            <label class="form-label">Sur quel compte cet argent avait-il été pris ?</label>
             <select name="CompteBancaireId" class="form-select" required>
                 @foreach (var c in (ViewBag.Comptes as IEnumerable<ETAM.Web.Controllers.OptionCompte>)
                                    ?? Enumerable.Empty<ETAM.Web.Controllers.OptionCompte>())
@@ -91,51 +82,51 @@
         </div>
 
         <div class="col-md-3">
-            <label class="form-label">Budget imputé</label>
+            <label class="form-label">C'est une dépense de quoi ?</label>
             <select name="BudgetConcerne" class="form-select">
-                <option value="@((int)TypeBudget.Materiel)">Budget Matériel du chantier</option>
-                <option value="@((int)TypeBudget.Compte)">Budget Comptes de l'entreprise</option>
+                <option value="@((int)TypeBudget.Materiel)">Du chantier</option>
+                <option value="@((int)TypeBudget.Compte)">Du bureau</option>
             </select>
         </div>
 
         <div class="col-md-3">
-            <label class="form-label">Référence</label>
-            <input name="Reference" class="form-control" placeholder="N° facture, n° chèque" />
+            <label class="form-label">N° de facture ou de chèque</label>
+            <input name="Reference" class="form-control" placeholder="FAC-2026-001" />
         </div>
 
         <div class="col-md-6">
-            <label class="form-label">Ligne de la prévision réglée <span class="text-muted">(facultatif)</span></label>
+            <label class="form-label">
+                Cela correspond à quelle ligne de la prévision ?
+                <span class="text-muted fw-normal">— facultatif</span>
+            </label>
             <select name="PrevisionLigneId" class="form-select">
-                <option value="">— Non rattaché —</option>
+                <option value="">— je ne sais pas —</option>
                 @foreach (var l in p.Lignes.Where(x => !x.IsDeleted))
                 {
                     <option value="@l.Id">@l.Designation — @l.Total.ToString("N0") Ar</option>
                 }
             </select>
             <div class="form-text">
-                Permet de sortir le stock et de suivre l'enveloppe du poste.
+                Si vous le renseignez, le stock du matériau baisse tout seul.
             </div>
         </div>
 
         <div class="col-md-6">
-            <label class="form-label">Signature du bénéficiaire <span class="text-muted">(facultatif)</span></label>
-            <input name="AccuseNom" class="form-control" placeholder="Nom de celui qui reconnaît avoir reçu" />
+            <label class="form-label">
+                Nom de celui qui signe le reçu
+                <span class="text-muted fw-normal">— facultatif</span>
+            </label>
+            <input name="AccuseNom" class="form-control" placeholder="Il reconnaît avoir reçu cette somme" />
         </div>
 
         <div class="col-12">
-            <label class="form-label">Observation</label>
+            <label class="form-label">Remarque <span class="text-muted fw-normal">— facultatif</span></label>
             <input name="Observation" class="form-control" />
         </div>
     </div>
 
-    <div class="alert alert-warning mt-4 mb-3">
-        <i class="fa-solid fa-triangle-exclamation me-1"></i>
-        Cette opération sort réellement l'argent du compte. Elle ne pourra être annulée
-        que par un administrateur, et seulement avant la réception des travaux.
-    </div>
-
-    <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary">Enregistrer le décaissement</button>
+    <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn btn-primary btn-lg">Enregistrer cette sortie</button>
         <a asp-controller="Prevision" asp-action="Details" asp-route-id="@p.Id" class="btn btn-outline-secondary">
             Annuler
         </a>
