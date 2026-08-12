@@ -11,11 +11,7 @@
 
 <div class="mb-3">
     <h5 class="mb-0">Prévision journalière</h5>
-    <small class="text-muted">
-Ce qu'on prévoit de dépenser chaque jour de la semaine, à l'intérieur de
-        l'enveloppe du mois. C'est une prévision, pas une sortie : aucun argent
-        n'est engagé ici.
-    </small>
+    <small class="text-muted">Ce qu'on prévoit de dépenser chaque jour. Aucun argent n'est engagé ici.</small>
 </div>
 
 <!-- Choix du chantier et de la semaine -->
@@ -64,24 +60,9 @@ else if (enveloppe is null)
 }
 else
 {
-    <div class="etam-card p-3 mb-3">
-        <div class="row text-center g-3">
-            <div class="col-4">
-                <div class="text-muted small">Enveloppe du mois</div>
-                <div class="fs-6 fw-semibold">@enveloppe.EnveloppeTotale.ToString("N0") Ar</div>
-            </div>
-            <div class="col-4">
-                <div class="text-muted small">Prévu cette semaine</div>
-                <div class="fs-5 fw-bold text-primary">@totalPrevu.ToString("N0") Ar</div>
-            </div>
-            <div class="col-4">
-                <div class="text-muted small">Sorti réellement</div>
-                <div class="fs-5 fw-bold @(totalDemande > totalPrevu ? "text-danger" : "text-success")">
-                    @totalDemande.ToString("N0") Ar
-                </div>
-            </div>
-        </div>
-    </div>
+    <p class="text-muted small mb-3">
+        Enveloppe de @enveloppe.Libelle : <strong>@enveloppe.EnveloppeTotale.ToString("N0") Ar</strong>
+    </p>
 
     <form asp-action="Enregistrer" method="post" class="etam-card p-3">
         @Html.AntiForgeryToken()
@@ -128,7 +109,6 @@ else
                         else
                         {
                             <span class="fw-semibold">@j.MontantDemande.ToString("N0")</span>
-                            <div class="small text-muted">@j.NombreDemandes prévision(s) réelle(s)</div>
                         }
                     </td>
                     <td class="text-end">
@@ -175,10 +155,7 @@ else
             <div class="d-flex gap-2 mt-3">
                 <button type="submit" class="btn btn-primary">Enregistrer la prévision de la semaine</button>
             </div>
-            <p class="text-muted small mt-2 mb-0">
-                Laissez un jour à 0 s'il n'y a rien de prévu. Le total de toutes les semaines
-                ne peut pas dépasser l'enveloppe du mois.
-            </p>
+            <p class="text-muted small mt-2 mb-0">Laissez à 0 les jours sans activité.</p>
         }
     </form>
 }

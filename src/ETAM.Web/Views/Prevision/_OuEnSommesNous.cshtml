@@ -1,117 +1,47 @@
 @model ETAM.Domain.Entities.PrevisionJournaliere
 @using ETAM.Domain.Enums
 @*
-    Bandeau d'orientation, en haut de la fiche d'une prévision.
-    Il répond à trois questions que l'utilisateur se pose :
-    où en est-on, qu'est-ce qu'il faut faire maintenant, et qui doit le faire.
+    Une seule phrase : ce qu'il faut faire maintenant, et par qui.
+    Volontairement dépouillé — l'utilisateur n'a besoin que de la prochaine action.
 *@
 
 @{
-    // L'étape courante, de 1 à 6. Sert à colorier la frise.
-    var etape = Model.Statut switch
-    {
-        StatutPrevision.Brouillon => 1,
-        StatutPrevision.Soumise => 2,
-        StatutPrevision.ValideeResponsableFinancier => 2,
-        StatutPrevision.ValideeAdministrateur => 3,
-        StatutPrevision.Executee => Model.EstAccuseeReception ? 5 : 4,
-        StatutPrevision.RapportSoumis => 6,
-        StatutPrevision.Cloturee => 7,
-        _ => 0
-    };
-
-    // Ce qu'il faut faire maintenant, et par qui.
     var (aFaire, parQui, couleur) = Model.Statut switch
     {
         StatutPrevision.Brouillon =>
-            ("Envoyer la demande pour validation.", "Celui qui l'a créée", "secondary"),
+            ("Envoyer la demande pour validation.", "celui qui l'a créée", "secondary"),
 
         StatutPrevision.Soumise =>
-            ("Vérifier les montants et valider.", "Le Correspondant (Finance)", "info"),
+            ("Vérifier les montants et valider.", "la Finance", "info"),
 
         StatutPrevision.ValideeResponsableFinancier =>
-            ("Donner l'accord définitif.", "La Direction", "info"),
+            ("Donner l'accord définitif.", "la Direction", "info"),
 
         StatutPrevision.ValideeAdministrateur =>
-            ("Ouvrir l'enveloppe du jour. L'argent ne sortira pas encore de la banque.",
-             "La Direction ou la Finance", "primary"),
+            ("Exécuter : l'argent sortira de la banque.", "la Direction ou la Finance", "primary"),
 
         StatutPrevision.Executee when !Model.EstAccuseeReception =>
-            ("Signer le reçu pour retirer l'argent de la banque. Tant que ce n'est pas fait, "
-             + "aucune dépense n'est possible.", "Celui qui reçoit l'argent sur le chantier", "warning"),
+            ("Signer le reçu de l'argent remis.", "celui qui reçoit l'argent", "warning"),
 
         StatutPrevision.Executee =>
-            ("Noter chaque sortie d'argent au fur et à mesure de la journée, puis écrire "
-             + "le compte rendu des travaux avec les factures.", "Le Chef de chantier", "success"),
+            ("Noter les sorties d'argent, puis écrire le compte rendu.", "le Chef de chantier", "success"),
 
         StatutPrevision.RapportSoumis =>
-            ("Lire le compte rendu, vérifier les factures, et réceptionner les travaux. "
-             + "Le chantier est bloqué tant que ce n'est pas fait.", "La Direction", "info"),
+            ("Lire le compte rendu et réceptionner les travaux.", "la Direction", "info"),
 
-        StatutPrevision.Cloturee =>
-            ("Rien à faire. Journée terminée et justifiée.", "", "dark"),
-
-        StatutPrevision.Refusee =>
-            ("Demande refusée. Corrigez-la ou créez-en une nouvelle.", "", "danger"),
-
-        _ => ("", "", "secondary")
-    };
-
-    var etapes = new[]
-    {
-        (1, "Demande", "on écrit ce dont on a besoin"),
-        (2, "Finance", "vérifie les montants"),
-        (3, "Direction", "donne l'accord"),
-        (4, "Reçu signé", "l'argent sort de la banque"),
-        (5, "Dépenses", "on note chaque sortie"),
-        (6, "Compte rendu", "on dit ce qui a été fait"),
-        (7, "Réceptionné", "la Direction valide")
+        StatutPrevision.Cloturee => ("", "", ""),
+        StatutPrevision.Refusee => ("Demande refusée.", "", "danger"),
+        _ => ("", "", "")
     };
 }
 
-<!-- Frise des étapes -->
-<div class="etam-card p-3 mb-3">
-    <div class="d-flex flex-wrap justify-content-between text-center gap-2">
-        @foreach (var (n, titre, sous) in etapes)
-        {
-            var fait = etape > n;
-            var courant = etape == n;
-            var fond = fait ? "#047857" : courant ? "#2563eb" : "#e2e8f0";
-            var texte = (fait || courant) ? "#ffffff" : "#94a3b8";
-
-            <div style="flex:1;min-width:92px">
-                <div class="mx-auto mb-1 d-flex align-items-center justify-content-center fw-bold"
-                     style="width:30px;height:30px;border-radius:50%;background:@fond;color:@texte;font-size:.85rem">
-                    @if (fait)
-                    {
-                        <i class="fa-solid fa-check" style="font-size:.7rem"></i>
-                    }
-                    else
-                    {
-                        @n
-                    }
-                </div>
-                <div class="small @(courant ? "fw-bold text-primary" : fait ? "text-success" : "text-muted")">
-                    @titre
-                </div>
-                <div class="text-muted" style="font-size:.68rem;line-height:1.2">@sous</div>
-            </div>
-        }
-    </div>
-</div>
-
-<!-- Ce qu'il faut faire maintenant -->
 @if (!string.IsNullOrEmpty(aFaire))
 {
-    <div class="alert alert-@couleur d-flex align-items-start gap-3">
-        <i class="fa-solid fa-circle-arrow-right mt-1"></i>
-        <div>
-            <div class="fw-bold">À faire maintenant</div>
-            <div>@aFaire</div>
-            @if (!string.IsNullOrEmpty(parQui))
-            {
-                <div class="small mt-1">Qui s'en occupe : <strong>@parQui</strong></div>
-            }
-        </div>
+    <div class="alert alert-@couleur py-2 px-3 mb-3">
+        <strong>À faire :</strong> @aFaire
+        @if (!string.IsNullOrEmpty(parQui))
+        {
+            <span class="opacity-75">— par @parQui</span>
+        }
     </div>
 }
