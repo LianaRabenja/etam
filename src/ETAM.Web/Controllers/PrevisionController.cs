@@ -646,17 +646,26 @@ public class PrevisionController : Controller
         var debut = DateTime.SpecifyKind(jour, DateTimeKind.Utc);
         var fin = debut.AddDays(1).AddTicks(-1);
 
-        var lignes = await _uow.Previsions.Query().AsNoTracking()
+        // On ramène les prévisions à plat puis on regroupe en mémoire.
+        // Un GroupBy contenant une somme sur une collection liée (les lignes) n'est
+        // pas traduisible en SQL par EF Core : la page tombait en erreur.
+        var brut = await _uow.Previsions.Query().AsNoTracking()
             .Where(p => p.DatePrevision >= debut && p.DatePrevision <= fin
                         && p.Statut != StatutPrevision.Refusee
                         && p.Statut != StatutPrevision.Brouillon)
-            .GroupBy(p => p.Chantier.Nom)
-            .Select(g => new LigneRecap(
-                g.Key,
-                g.Sum(p => p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Quantite * l.PrixUnitaireEstime)),
-                true))
-            .OrderBy(x => x.Libelle)
+            .Select(p => new
+            {
+                Chantier = p.Chantier.Nom,
+                Montant = p.Lignes.Where(l => !l.IsDeleted)
+                                  .Sum(l => l.Quantite * l.PrixUnitaireEstime)
+            })
             .ToListAsync(ct);
+
+        var lignes = brut
+            .GroupBy(x => x.Chantier)
+            .Select(g => new LigneRecap(g.Key, g.Sum(x => x.Montant), true))
+            .OrderBy(x => x.Libelle)
+            .ToList();
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase))
             return File(FeuillesJournalieres.RecapExcel(jour, lignes),
