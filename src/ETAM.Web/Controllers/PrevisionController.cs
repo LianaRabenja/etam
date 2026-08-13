@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ETAM.Web.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
 public class PrevisionController : Controller
 {
     private readonly IPrevisionService _service;
@@ -640,6 +640,7 @@ public class PrevisionController : Controller
     /// Le récapitulatif de la journée : une ligne par chantier, avec le total à
     /// sortir de la banque. C'est la feuille que la direction vise avant le retrait.
     /// </summary>
+    [Authorize(Roles = "Administrateur,Correspondant")]
     public async Task<IActionResult> Recap(DateTime? date, string? format, CancellationToken ct)
     {
         var jour = (date ?? DateTime.UtcNow).Date;

@@ -12,7 +12,7 @@ namespace ETAM.Web.Controllers;
 /// Enveloppes mensuelles : le montant alloué à un chantier pour un mois donné,
 /// augmenté du reliquat non dépensé du mois précédent.
 /// </summary>
-[Authorize]
+[Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
 public class PrevisionMensuelleController : Controller
 {
     private readonly IUnitOfWork _uow;

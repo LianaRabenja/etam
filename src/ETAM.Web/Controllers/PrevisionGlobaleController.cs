@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ETAM.Web.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
 public class PrevisionGlobaleController : Controller
 {
     private readonly IUnitOfWork _uow;
