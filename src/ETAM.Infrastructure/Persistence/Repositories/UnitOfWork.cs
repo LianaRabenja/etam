@@ -22,6 +22,7 @@ public class UnitOfWork : IUnitOfWork
         PrevisionsMensuelles = new GenericRepository<PrevisionMensuelle>(context);
         PrevisionMensuelleLignes = new GenericRepository<PrevisionMensuelleLigne>(context);
         PlansJournaliers = new GenericRepository<PlanJournalier>(context);
+        AutresDepensesJour = new GenericRepository<AutreDepenseJour>(context);
         Decaissements = new GenericRepository<Decaissement>(context);
         PiecesJointes = new GenericRepository<PieceJointe>(context);
         PrevisionsGlobales = new GenericRepository<PrevisionGlobale>(context);
@@ -52,6 +53,7 @@ public class UnitOfWork : IUnitOfWork
     public IGenericRepository<PrevisionMensuelle> PrevisionsMensuelles { get; }
     public IGenericRepository<PrevisionMensuelleLigne> PrevisionMensuelleLignes { get; }
     public IGenericRepository<PlanJournalier> PlansJournaliers { get; }
+    public IGenericRepository<AutreDepenseJour> AutresDepensesJour { get; }
     public IGenericRepository<Decaissement> Decaissements { get; }
     public IGenericRepository<PieceJointe> PiecesJointes { get; }
     public IGenericRepository<PrevisionGlobale> PrevisionsGlobales { get; }

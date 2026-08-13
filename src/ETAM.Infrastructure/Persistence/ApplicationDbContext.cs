@@ -45,6 +45,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<PrevisionMensuelle> PrevisionsMensuelles => Set<PrevisionMensuelle>();
     public DbSet<PrevisionMensuelleLigne> PrevisionMensuelleLignes => Set<PrevisionMensuelleLigne>();
     public DbSet<PlanJournalier> PlansJournaliers => Set<PlanJournalier>();
+    public DbSet<AutreDepenseJour> AutresDepensesJour => Set<AutreDepenseJour>();
     public DbSet<Decaissement> Decaissements => Set<Decaissement>();
     public DbSet<PieceJointe> PiecesJointes => Set<PieceJointe>();
     public DbSet<PrevisionGlobale> PrevisionsGlobales => Set<PrevisionGlobale>();
@@ -85,6 +86,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         builder.Entity<PrevisionMensuelle>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionMensuelleLigne>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PlanJournalier>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<AutreDepenseJour>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<Decaissement>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PieceJointe>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<PrevisionGlobale>().HasQueryFilter(e => !e.IsDeleted);

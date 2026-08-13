@@ -667,6 +667,17 @@ public class PrevisionController : Controller
             .OrderBy(x => x.Libelle)
             .ToList();
 
+        // Les autres sorties de la journée, saisies à la main : DAF chauffeur,
+        // carte rose, avance compresseur, chambre d'hôtel, matériaux divers...
+        // Elles n'appartiennent à aucun chantier mais partent le même jour.
+        var autres = await _uow.AutresDepensesJour.Query().AsNoTracking()
+            .Where(a => a.Date >= debut && a.Date <= fin)
+            .OrderBy(a => a.Ordre).ThenBy(a => a.Id)
+            .Select(a => new LigneRecap(a.Libelle, a.Montant, false))
+            .ToListAsync(ct);
+
+        lignes.AddRange(autres);
+
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase))
             return File(FeuillesJournalieres.RecapExcel(jour, lignes),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -677,7 +688,65 @@ public class PrevisionController : Controller
                 $"Recap-{jour:yyyyMMdd}.pdf");
 
         ViewBag.Date = jour;
+
+        // Les lignes libres sont renvoyées avec leur identifiant, pour permettre
+        // de les retirer depuis l'écran.
+        ViewBag.LignesLibres = await _uow.AutresDepensesJour.Query().AsNoTracking()
+            .Where(a => a.Date >= debut && a.Date <= fin)
+            .OrderBy(a => a.Ordre).ThenBy(a => a.Id)
+            .ToListAsync(ct);
+
         return View(lignes);
+    }
+
+    /// <summary>Ajoute une sortie du jour qui ne dépend d'aucun chantier.</summary>
+    [Authorize(Roles = "Administrateur,Correspondant")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AjouterAutreDepense(
+        DateTime date, string libelle, decimal montant, string? observation, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(libelle) || montant <= 0)
+        {
+            TempData["Error"] = "Indiquez un libellé et un montant supérieur à zéro.";
+            return RedirectToAction(nameof(Recap), new { date = date.ToString("yyyy-MM-dd") });
+        }
+
+        var jour = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
+
+        var dernierOrdre = await _uow.AutresDepensesJour.Query().AsNoTracking()
+            .Where(a => a.Date == jour)
+            .MaxAsync(a => (int?)a.Ordre, ct) ?? 0;
+
+        await _uow.AutresDepensesJour.AddAsync(new AutreDepenseJour
+        {
+            Date = jour,
+            Libelle = libelle.Trim(),
+            Montant = montant,
+            Observation = observation,
+            Ordre = dernierOrdre + 1
+        }, ct);
+
+        await _uow.SaveChangesAsync(ct);
+        TempData["Success"] = $"{libelle.Trim()} ajouté au récapitulatif.";
+        return RedirectToAction(nameof(Recap), new { date = jour.ToString("yyyy-MM-dd") });
+    }
+
+    [Authorize(Roles = "Administrateur,Correspondant")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetirerAutreDepense(long id, CancellationToken ct)
+    {
+        var ligne = await _uow.AutresDepensesJour.GetByIdAsync(id, ct);
+        if (ligne is null) return NotFound();
+
+        var jour = ligne.Date;
+        ligne.IsDeleted = true;
+        _uow.AutresDepensesJour.Update(ligne);
+        await _uow.SaveChangesAsync(ct);
+
+        TempData["Success"] = "Ligne retirée.";
+        return RedirectToAction(nameof(Recap), new { date = jour.ToString("yyyy-MM-dd") });
     }
 
     /// <summary>Accusé de réception imprimable, à faire signer et à classer.</summary>

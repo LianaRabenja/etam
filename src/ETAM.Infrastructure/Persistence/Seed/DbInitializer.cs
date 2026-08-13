@@ -40,6 +40,7 @@ public static class DbInitializer
         logger.LogWarning("EFFACEMENT TOTAL DEMANDÉ : toutes les données métier vont être supprimées.");
 
         const string sql = """
+            DELETE FROM "AutresDepensesJour";
             DELETE FROM "PlansJournaliers";
             DELETE FROM "PiecesJointes";
             DELETE FROM "Decaissements";
@@ -97,6 +98,7 @@ public static class DbInitializer
         // ouverte explicitement ci-dessous, sinon un échec en cours de route
         // laisserait la base à moitié nettoyée.
         const string sql = """
+            DELETE FROM "AutresDepensesJour";
             DELETE FROM "PlansJournaliers";
             DELETE FROM "PiecesJointes";
             DELETE FROM "Decaissements";

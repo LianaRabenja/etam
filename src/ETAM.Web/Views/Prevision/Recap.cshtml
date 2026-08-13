@@ -3,19 +3,20 @@
     ViewData["Title"] = "Recap Budget chantier";
     var date = (DateTime)ViewBag.Date;
     var total = Model.Sum(l => l.Montant);
+    var libres = ViewBag.LignesLibres as List<ETAM.Domain.Entities.AutreDepenseJour>
+                 ?? new List<ETAM.Domain.Entities.AutreDepenseJour>();
+    var peutModifier = User.IsInRole("Administrateur") || User.IsInRole("Correspondant");
 }
 
 <div class="d-flex justify-content-between align-items-end mb-3">
     <div>
         <h5 class="mb-0">Recap Budget chantier</h5>
-        <small class="text-muted">L'argent à sortir de la banque ce jour, tous chantiers confondus.</small>
+        <small class="text-muted">Tout ce qui doit sortir de la banque ce jour.</small>
     </div>
-    <form method="get" class="d-flex gap-2 align-items-end">
-        <div>
-            <label class="form-label small text-muted mb-1">Journée</label>
-            <input name="date" type="date" class="form-control"
-                   value="@date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" />
-        </div>
+    <form method="get">
+        <label class="form-label small text-muted mb-1">Journée</label>
+        <input name="date" type="date" class="form-control"
+               value="@date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" />
     </form>
 </div>
 
@@ -24,7 +25,7 @@
     <div class="fw-bold" style="font-size:2rem;color:#2563eb">@total.ToString("N0") Ar</div>
 </div>
 
-<div class="etam-card p-3">
+<div class="etam-card p-3 mb-3">
     <div class="d-flex justify-content-end gap-2 mb-3">
         <a class="btn btn-outline-success btn-sm"
            href="@Url.Action("Recap", new { date = date.ToString("yyyy-MM-dd"), format = "excel" })">
@@ -38,7 +39,7 @@
 
     @if (!Model.Any())
     {
-        <p class="text-muted mb-0">Aucune prévision pour cette journée.</p>
+        <p class="text-muted mb-0">Rien pour cette journée.</p>
     }
     else
     {
@@ -47,14 +48,34 @@
                 <tr>
                     <th>Chantier</th>
                     <th class="text-end" style="width:200px">Montant</th>
+                    <th style="width:60px"></th>
                 </tr>
             </thead>
             <tbody>
             @foreach (var l in Model)
             {
+                var libre = libres.FirstOrDefault(x => x.Libelle == l.Libelle && x.Montant == l.Montant);
                 <tr>
-                    <td class="fw-semibold">@l.Libelle</td>
+                    <td class="@(l.EstChantier ? "fw-semibold" : "")">
+                        @l.Libelle
+                        @if (!l.EstChantier)
+                        {
+                            <span class="badge bg-light text-muted ms-1">hors chantier</span>
+                        }
+                    </td>
                     <td class="text-end">@l.Montant.ToString("N2")</td>
+                    <td class="text-end">
+                        @if (!l.EstChantier && libre is not null && peutModifier)
+                        {
+                            <form asp-action="RetirerAutreDepense" asp-route-id="@libre.Id" method="post"
+                                  onsubmit="return confirm('Retirer cette ligne ?');">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-sm btn-outline-danger" title="Retirer">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </form>
+                        }
+                    </td>
                 </tr>
             }
             </tbody>
@@ -62,8 +83,44 @@
                 <tr class="fw-bold fs-5">
                     <td>Total</td>
                     <td class="text-end">@total.ToString("N2")</td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
     }
 </div>
+
+@if (peutModifier)
+{
+    <div class="etam-card p-3">
+        <h6 class="mb-1">Ajouter une sortie hors chantier</h6>
+        <p class="text-muted small mb-3">
+            Tout ce qui part le même jour sans appartenir à un chantier :
+            DAF chauffeur, carte rose, avance compresseur, chambre d'hôtel, matériaux divers…
+        </p>
+
+        <form asp-action="AjouterAutreDepense" method="post" class="row g-2 align-items-end">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="date" value="@date.ToString("yyyy-MM-dd")" />
+
+            <div class="col-md-5">
+                <label class="form-label small">Quoi ?</label>
+                <input name="libelle" class="form-control" required placeholder="DAF CHAUFFEUR" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Combien ?</label>
+                <input name="montant" type="number" step="0.01" min="0.01" class="form-control"
+                       required placeholder="300" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Remarque</label>
+                <input name="observation" class="form-control" />
+            </div>
+            <div class="col-md-1">
+                <button class="btn btn-primary w-100">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+}
