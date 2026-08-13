@@ -45,3 +45,18 @@
         }
     </div>
 }
+
+@* Les feuilles à imprimer pour faire sortir l'argent à la banque. *@
+@if (Model.Statut != StatutPrevision.Brouillon && Model.Statut != StatutPrevision.Refusee)
+{
+    <div class="d-flex gap-2 mb-3">
+        <a class="btn btn-outline-success btn-sm"
+           href="@Url.Action("Commande", "Prevision", new { id = Model.Id, format = "excel" })">
+            <i class="fa-solid fa-file-excel me-1"></i> Commande Excel
+        </a>
+        <a class="btn btn-outline-danger btn-sm"
+           href="@Url.Action("Commande", "Prevision", new { id = Model.Id, format = "pdf" })">
+            <i class="fa-solid fa-file-pdf me-1"></i> Commande PDF
+        </a>
+    </div>
+}

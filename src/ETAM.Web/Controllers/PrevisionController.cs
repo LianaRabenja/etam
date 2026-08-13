@@ -604,6 +604,73 @@ public class PrevisionController : Controller
     public async Task<IActionResult> Refuser(long id, string motif, CancellationToken ct)
         => Retour(await _service.RefuserAsync(id, motif ?? "Non précisé", ct));
 
+    // ===== Les deux feuilles que l'entreprise sort chaque jour =====
+
+    /// <summary>
+    /// La commande d'un chantier, au format de la feuille papier : groupée par
+    /// catégorie, avec un sous-total par catégorie et les emplacements de signature.
+    /// </summary>
+    public async Task<IActionResult> Commande(long id, string format, CancellationToken ct)
+    {
+        var p = await _uow.Previsions.Query().AsNoTracking()
+            .Include(x => x.Chantier)
+            .Include(x => x.Lignes)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+
+        // Numéro de commande : rang de cette prévision dans le mois, pour ce chantier.
+        var debutMois = new DateTime(p.DatePrevision.Year, p.DatePrevision.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var numero = await _uow.Previsions.Query().AsNoTracking()
+            .CountAsync(x => x.ChantierId == p.ChantierId
+                             && x.DatePrevision >= debutMois
+                             && x.DatePrevision <= p.DatePrevision
+                             && x.Statut != StatutPrevision.Refusee, ct);
+        if (numero < 1) numero = 1;
+
+        var nom = $"Commande-{p.Chantier?.Code}-{p.DatePrevision:yyyyMMdd}";
+
+        if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase))
+            return File(FeuillesJournalieres.CommandeExcel(p, numero),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nom + ".xlsx");
+
+        return File(FeuillesJournalieres.CommandePdf(p, numero), "application/pdf", nom + ".pdf");
+    }
+
+    /// <summary>
+    /// Le récapitulatif de la journée : une ligne par chantier, avec le total à
+    /// sortir de la banque. C'est la feuille que la direction vise avant le retrait.
+    /// </summary>
+    public async Task<IActionResult> Recap(DateTime? date, string? format, CancellationToken ct)
+    {
+        var jour = (date ?? DateTime.UtcNow).Date;
+        var debut = DateTime.SpecifyKind(jour, DateTimeKind.Utc);
+        var fin = debut.AddDays(1).AddTicks(-1);
+
+        var lignes = await _uow.Previsions.Query().AsNoTracking()
+            .Where(p => p.DatePrevision >= debut && p.DatePrevision <= fin
+                        && p.Statut != StatutPrevision.Refusee
+                        && p.Statut != StatutPrevision.Brouillon)
+            .GroupBy(p => p.Chantier.Nom)
+            .Select(g => new LigneRecap(
+                g.Key,
+                g.Sum(p => p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Quantite * l.PrixUnitaireEstime)),
+                true))
+            .OrderBy(x => x.Libelle)
+            .ToListAsync(ct);
+
+        if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase))
+            return File(FeuillesJournalieres.RecapExcel(jour, lignes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"Recap-{jour:yyyyMMdd}.xlsx");
+
+        if (string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase))
+            return File(FeuillesJournalieres.RecapPdf(jour, lignes), "application/pdf",
+                $"Recap-{jour:yyyyMMdd}.pdf");
+
+        ViewBag.Date = jour;
+        return View(lignes);
+    }
+
     /// <summary>Accusé de réception imprimable, à faire signer et à classer.</summary>
     public async Task<IActionResult> AccuseRecu(long id, CancellationToken ct)
     {

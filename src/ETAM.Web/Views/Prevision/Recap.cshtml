@@ -1,0 +1,69 @@
+@model List<ETAM.Web.Services.LigneRecap>
+@{
+    ViewData["Title"] = "Recap Budget chantier";
+    var date = (DateTime)ViewBag.Date;
+    var total = Model.Sum(l => l.Montant);
+}
+
+<div class="d-flex justify-content-between align-items-end mb-3">
+    <div>
+        <h5 class="mb-0">Recap Budget chantier</h5>
+        <small class="text-muted">L'argent à sortir de la banque ce jour, tous chantiers confondus.</small>
+    </div>
+    <form method="get" class="d-flex gap-2 align-items-end">
+        <div>
+            <label class="form-label small text-muted mb-1">Journée</label>
+            <input name="date" type="date" class="form-control"
+                   value="@date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" />
+        </div>
+    </form>
+</div>
+
+<div class="etam-card p-3 mb-3 text-center">
+    <div class="text-muted small">Total à sortir le @date.ToString("dd/MM/yyyy")</div>
+    <div class="fw-bold" style="font-size:2rem;color:#2563eb">@total.ToString("N0") Ar</div>
+</div>
+
+<div class="etam-card p-3">
+    <div class="d-flex justify-content-end gap-2 mb-3">
+        <a class="btn btn-outline-success btn-sm"
+           href="@Url.Action("Recap", new { date = date.ToString("yyyy-MM-dd"), format = "excel" })">
+            <i class="fa-solid fa-file-excel me-1"></i> Excel
+        </a>
+        <a class="btn btn-outline-danger btn-sm"
+           href="@Url.Action("Recap", new { date = date.ToString("yyyy-MM-dd"), format = "pdf" })">
+            <i class="fa-solid fa-file-pdf me-1"></i> PDF
+        </a>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <p class="text-muted mb-0">Aucune prévision pour cette journée.</p>
+    }
+    else
+    {
+        <table class="table align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Chantier</th>
+                    <th class="text-end" style="width:200px">Montant</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var l in Model)
+            {
+                <tr>
+                    <td class="fw-semibold">@l.Libelle</td>
+                    <td class="text-end">@l.Montant.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold fs-5">
+                    <td>Total</td>
+                    <td class="text-end">@total.ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+</div>
