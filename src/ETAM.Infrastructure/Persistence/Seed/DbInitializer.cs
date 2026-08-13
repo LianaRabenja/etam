@@ -29,6 +29,65 @@ public static class DbInitializer
     /// L'ordre suit les dépendances : on part des feuilles et on remonte vers les
     /// chantiers. Le tout dans une transaction, donc sans état intermédiaire possible.
     /// </summary>
+    /// <summary>
+    /// Vide entièrement la base de son contenu métier et remet les compteurs à zéro.
+    /// Les utilisateurs et les rôles sont conservés : sans eux, personne ne pourrait
+    /// se reconnecter. Le catalogue, les fournisseurs et les paramètres sont recréés
+    /// automatiquement au démarrage suivant.
+    /// </summary>
+    private static async Task ToutEffacerAsync(ApplicationDbContext context, ILogger logger)
+    {
+        logger.LogWarning("EFFACEMENT TOTAL DEMANDÉ : toutes les données métier vont être supprimées.");
+
+        const string sql = """
+            DELETE FROM "PlansJournaliers";
+            DELETE FROM "PiecesJointes";
+            DELETE FROM "Decaissements";
+            DELETE FROM "PrevisionLignes";
+            DELETE FROM "Previsions";
+            DELETE FROM "PrevisionMensuelleLignes";
+            DELETE FROM "PrevisionsMensuelles";
+            DELETE FROM "PrevisionsGlobalesLignes";
+            DELETE FROM "PrevisionsGlobales";
+            DELETE FROM "ApprovisionnementLignes";
+            DELETE FROM "Approvisionnements";
+            DELETE FROM "RapportTravailLignesAvancement";
+            DELETE FROM "RapportTravailLignesMateriaux";
+            DELETE FROM "RapportTravailLignesEquipements";
+            DELETE FROM "RapportsTravail";
+            DELETE FROM "MouvementsMateriau";
+            DELETE FROM "Materiaux";
+            DELETE FROM "Depenses";
+            DELETE FROM "Alertes";
+            DELETE FROM "DettesFournisseurs";
+            DELETE FROM "MouvementsBancaires";
+            DELETE FROM "ComptesBancaires";
+            UPDATE "AspNetUsers" SET "ChantierId" = NULL;
+            DELETE FROM "Chantiers";
+            DELETE FROM "Fournisseurs";
+            DELETE FROM "Catalogue";
+            DELETE FROM "BudgetsComptes";
+            DELETE FROM "Parametres";
+            DELETE FROM "AuditLogs";
+            """;
+
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(sql);
+            await transaction.CommitAsync();
+            logger.LogWarning(
+                "EFFACEMENT TOTAL TERMINÉ. La base ne contient plus que les comptes utilisateurs. " +
+                "RETIREZ MAINTENANT la variable ETAM_TOUT_EFFACER, sinon la base sera vidée " +
+                "à chaque redémarrage du service.");
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logger.LogError(ex, "L'effacement total a échoué. Rien n'a été supprimé.");
+        }
+    }
+
     private static async Task NettoyerDonneesChantiersAsync(ApplicationDbContext context, ILogger logger)
     {
         logger.LogWarning("NETTOYAGE DEMANDÉ : suppression de toutes les données de chantier.");
@@ -38,6 +97,7 @@ public static class DbInitializer
         // ouverte explicitement ci-dessous, sinon un échec en cours de route
         // laisserait la base à moitié nettoyée.
         const string sql = """
+            DELETE FROM "PlansJournaliers";
             DELETE FROM "PiecesJointes";
             DELETE FROM "Decaissements";
             DELETE FROM "PrevisionLignes";
@@ -98,6 +158,15 @@ public static class DbInitializer
         if (Environment.GetEnvironmentVariable("ETAM_NETTOYER_CHANTIERS") == "OUI-EFFACER")
         {
             await NettoyerDonneesChantiersAsync(context, logger);
+        }
+
+        // Effacement TOTAL : tout le contenu métier, y compris le catalogue des prix,
+        // les fournisseurs, le budget du bureau et le journal d'audit.
+        // Seuls les comptes utilisateurs et les rôles survivent — sans eux, plus
+        // personne ne pourrait se connecter pour reconstruire quoi que ce soit.
+        if (Environment.GetEnvironmentVariable("ETAM_TOUT_EFFACER") == "OUI-TOUT-EFFACER")
+        {
+            await ToutEffacerAsync(context, logger);
         }
 
         // --- Migration douce de l'ancien libellé de rôle ---
