@@ -39,13 +39,16 @@ public static class DbInitializer
     {
         logger.LogWarning("EFFACEMENT TOTAL DEMANDÉ : toutes les données métier vont être supprimées.");
 
+        // Previsions référence PlansJournaliers sans ON DELETE : il faut vider
+        // les prévisions AVANT les plans journaliers, sinon la clé étrangère
+        // fait échouer tout le lot.
         const string sql = """
-            DELETE FROM "AutresDepensesJour";
-            DELETE FROM "PlansJournaliers";
             DELETE FROM "PiecesJointes";
             DELETE FROM "Decaissements";
             DELETE FROM "PrevisionLignes";
             DELETE FROM "Previsions";
+            DELETE FROM "AutresDepensesJour";
+            DELETE FROM "PlansJournaliers";
             DELETE FROM "PrevisionMensuelleLignes";
             DELETE FROM "PrevisionsMensuelles";
             DELETE FROM "PrevisionsGlobalesLignes";
@@ -97,13 +100,16 @@ public static class DbInitializer
         // automatiquement un lot de plusieurs instructions. La transaction est
         // ouverte explicitement ci-dessous, sinon un échec en cours de route
         // laisserait la base à moitié nettoyée.
+        // Previsions référence PlansJournaliers sans ON DELETE : il faut vider
+        // les prévisions AVANT les plans journaliers, sinon la clé étrangère
+        // fait échouer tout le lot.
         const string sql = """
-            DELETE FROM "AutresDepensesJour";
-            DELETE FROM "PlansJournaliers";
             DELETE FROM "PiecesJointes";
             DELETE FROM "Decaissements";
             DELETE FROM "PrevisionLignes";
             DELETE FROM "Previsions";
+            DELETE FROM "AutresDepensesJour";
+            DELETE FROM "PlansJournaliers";
             DELETE FROM "PrevisionMensuelleLignes";
             DELETE FROM "PrevisionsMensuelles";
             DELETE FROM "PrevisionsGlobalesLignes";
@@ -118,11 +124,9 @@ public static class DbInitializer
             DELETE FROM "Materiaux";
             DELETE FROM "Depenses";
             DELETE FROM "Alertes";
-            DELETE FROM "DettesFournisseurs" WHERE "ChantierId" IS NOT NULL;
-            DELETE FROM "MouvementsBancaires"
-             WHERE "ChantierId" IS NOT NULL
-                OR "CompteBancaireId" IN (SELECT "Id" FROM "ComptesBancaires" WHERE "ChantierId" IS NOT NULL);
-            DELETE FROM "ComptesBancaires" WHERE "ChantierId" IS NOT NULL;
+            DELETE FROM "DettesFournisseurs";
+            DELETE FROM "MouvementsBancaires";
+            DELETE FROM "ComptesBancaires";
             UPDATE "AspNetUsers" SET "ChantierId" = NULL WHERE "ChantierId" IS NOT NULL;
             DELETE FROM "Chantiers";
             UPDATE "BudgetsComptes"

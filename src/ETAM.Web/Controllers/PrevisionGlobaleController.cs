@@ -303,22 +303,36 @@ public class PrevisionGlobaleController : Controller
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        // L'argent du marché est déjà en banque (déposé à la création du chantier) :
-        // on ne redépose pas, on vérifie simplement que le solde couvre la prévision,
-        // puis on active la prévision globale (elle devient le budget de référence).
+        // Le plan du projet est un PLAN, pas un retrait : rien ne sort d'ici. On exigeait
+        // auparavant que le solde couvre la totalité du plan, parce que l'ancien code
+        // déposait le marché entier à la création du chantier. Sur un marché public payé
+        // par avance puis décomptes successifs, cette condition est intenable : elle
+        // bloquerait l'activation du plan tant que l'intégralité n'est pas encaissée.
+        //
+        // La trésorerie est contrôlée là où l'argent sort réellement — à l'exécution
+        // d'une prévision journalière (PrevisionService, « L'ARGENT SORT ICI »). Ici on
+        // se contente d'avertir quand le compte ne couvre pas encore le plan.
         var total = prev.Total;
-        if (compte.Solde < total)
-        {
-            TempData["Error"] = $"Solde bancaire insuffisant : {compte.Solde:N0} Ar disponibles pour une prévision de {total:N0} Ar.";
-            return RedirectToAction(nameof(Details), new { id });
-        }
 
         prev.Statut = StatutPrevisionGlobale.MiseEnBanque;
         prev.DateMiseEnBanque = DateTime.UtcNow;
         _uow.PrevisionsGlobales.Update(prev);
 
         await _uow.SaveChangesAsync(ct);
-        TempData["Success"] = $"Prévision globale activée. Budget de référence : {total:N0} Ar, couvert par le compte {compte.Nom} ({compte.Solde:N0} Ar).";
+
+        if (compte.Solde < total)
+        {
+            TempData["Success"] =
+                $"Plan du projet activé. Budget de référence : {total:N0} Ar. " +
+                $"À noter : le compte {compte.Nom} n'affiche que {compte.Solde:N0} Ar — " +
+                $"il manque {(total - compte.Solde):N0} Ar, à encaisser au fil des décomptes. " +
+                "Les prévisions journalières seront refusées si le compte est à sec le jour du retrait.";
+        }
+        else
+        {
+            TempData["Success"] = $"Plan du projet activé. Budget de référence : {total:N0} Ar, " +
+                                  $"couvert par le compte {compte.Nom} ({compte.Solde:N0} Ar).";
+        }
         return RedirectToAction(nameof(Details), new { id });
     }
 }

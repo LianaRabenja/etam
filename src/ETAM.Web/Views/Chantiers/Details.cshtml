@@ -68,6 +68,10 @@
         <div class="kpi-label">Solde compte bancaire</div>
         <div class="kpi-value">@((compte?.Solde ?? 0m).ToString("N0")) Ar</div>
         <div class="kpi-sub">@(compte?.Banque ?? "—")</div></div>
+    <div class="kpi"><div class="kpi-icon bg-amber"><i class="fa-solid fa-wallet"></i></div>
+        <div class="kpi-label">Caisse chantier</div>
+        <div class="kpi-value @(Model.CaisseChantier < 0 ? "text-danger" : "")">@Model.CaisseChantier.ToString("N0") Ar</div>
+        <div class="kpi-sub">Retiré @Model.TotalRetire.ToString("N0") − payé @c.Consommation.ToString("N0")</div></div>
     <div class="kpi"><div class="kpi-icon bg-amber"><i class="fa-solid fa-gauge-high"></i></div>
         <div class="kpi-label">Avancement</div>
         <div class="kpi-value">@c.PourcentageAvancement%</div>

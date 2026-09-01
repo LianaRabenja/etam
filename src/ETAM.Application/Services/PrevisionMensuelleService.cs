@@ -154,6 +154,15 @@ public class PrevisionMensuelleService : IPrevisionMensuelleService
         if (m.Statut == StatutPrevisionMensuelle.Cloturee)
             return Result.Failure("Une enveloppe clôturée ne peut plus être refusée.");
 
+        // Une enveloppe ouverte peut être annulée tant qu'elle n'a rien financé :
+        // c'est le seul recours quand on s'est trompé de mois à la création, sinon
+        // son montant resterait à jamais décompté du budget du projet.
+        // Dès qu'un décaissement s'y rattache, elle devient un fait comptable.
+        if (m.MontantConsomme > 0)
+            return Result.Failure(
+                $"Cette enveloppe a déjà financé {m.MontantConsomme:N0} Ar de dépenses : " +
+                "elle ne peut plus être annulée. Clôturez-la, le reliquat sera reporté.");
+
         m.Statut = StatutPrevisionMensuelle.Refusee;
         m.MotifRefus = motif;
         _uow.PrevisionsMensuelles.Update(m);

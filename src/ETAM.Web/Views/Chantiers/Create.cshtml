@@ -19,18 +19,31 @@
         <div class="col-md-4"><label class="form-label">Statut</label>
             <select asp-for="Statut" asp-items="Html.GetEnumSelectList<StatutChantier>()" class="form-select"></select></div>
         <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Marché</h6>
-            <small class="text-muted">Le budget du projet = montant du marché − bénéfice. C'est lui que couvrira la prévision globale.</small></div>
+            <small class="text-muted">Le budget du projet = montant du marché − bénéfice. C'est lui que couvrira la prévision globale, et c'est aussi le Budget Matériel du chantier.</small></div>
         <div class="col-md-4"><label class="form-label">Montant du marché (Ar)</label>
             <input asp-for="MontantMarche" id="inMarche" type="number" step="0.01" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Bénéfice (Ar)</label>
             <input asp-for="Benefice" id="inBenefice" type="number" step="0.01" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Budget projet (calculé)</label>
-            <input id="inBudgetProjet" class="form-control bg-light" readonly value="0" /></div>
+            <input id="inBudgetProjet" class="form-control bg-light" readonly value="0" />
+            <small class="text-muted">Sert aussi de Budget Matériel.</small></div>
 
-        <div class="col-md-6"><label class="form-label">Budget Matériel (Ar)</label>
-            <input asp-for="BudgetMateriel" type="number" step="0.01" class="form-control" /></div>
         <div class="col-md-6"><label class="form-label">Réserve (Ar)</label>
-            <input asp-for="Reserve" type="number" step="0.01" class="form-control" /></div>
+            <input asp-for="Reserve" type="number" step="0.01" class="form-control" />
+            <small class="text-muted">Facultatif. Laissez 0 si vous n'en avez pas.</small></div>
+        <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Compte bancaire du chantier</h6>
+            <small class="text-muted">Créé en même temps que le chantier. Ne saisissez que l'argent <strong>réellement reçu</strong> à ce jour — pas le montant du marché. Les encaissements suivants se saisiront dans Banques › Dépôt.</small></div>
+        <div class="col-md-4"><label class="form-label">Banque</label>
+            <input asp-for="Banque" class="form-control" placeholder="BGFI Madagascar, BNI, BOA..." /></div>
+        <div class="col-md-4"><label class="form-label">Intitulé du compte</label>
+            <input asp-for="NomCompte" class="form-control" placeholder="SARL ETAM" /></div>
+        <div class="col-md-4"><label class="form-label">Numéro de compte</label>
+            <input asp-for="NumeroCompte" class="form-control" placeholder="41000869011-66" /></div>
+        <div class="col-md-4"><label class="form-label">Montant déjà encaissé (Ar)</label>
+            <input asp-for="MontantEncaisse" type="number" step="0.01" class="form-control" /></div>
+        <div class="col-md-8"><label class="form-label">Motif de cet encaissement</label>
+            <input asp-for="MotifEncaissement" class="form-control" placeholder="Avance de démarrage 20 %" /></div>
+
         <div class="col-12"><label class="form-label">Observation</label>
             <textarea asp-for="Observation" class="form-control" rows="2"></textarea></div>
     </div>

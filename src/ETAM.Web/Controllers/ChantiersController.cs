@@ -67,7 +67,15 @@ public class ChantiersController : Controller
                 .OrderByDescending(a => a.CreatedAt).Take(50).ToListAsync(ct),
             RapportsTravail = await _uow.RapportsTravail.Query().AsNoTracking()
                 .Where(r => r.ChantierId == id)
-                .OrderByDescending(r => r.PeriodeFin).ToListAsync(ct)
+                .OrderByDescending(r => r.PeriodeFin).ToListAsync(ct),
+
+            // Somme de TOUS les retraits du chantier — pas seulement les 50 derniers
+            // mouvements affichés plus bas, sinon la caisse serait fausse dès le 51e.
+            TotalRetire = await _uow.MouvementsBancaires.Query().AsNoTracking()
+                .Where(m => m.ChantierId == id
+                            && m.Type == TypeMouvementBancaire.Retrait
+                            && m.EstValide)
+                .SumAsync(m => (decimal?)m.Montant, ct) ?? 0m
         };
         return View(vm);
     }
@@ -84,16 +92,23 @@ public class ChantiersController : Controller
         if (!ModelState.IsValid) return View(dto);
 
         var chantier = _mapper.Map<Chantier>(dto);
+
+        // Le Budget Matériel n'est plus saisi : c'est exactement le budget projet
+        // (marché − bénéfice). Le calculer ici évite d'avoir deux montants qui
+        // peuvent diverger alors qu'ils désignent la même enveloppe.
+        chantier.BudgetMateriel = chantier.BudgetProjet;
+
         await _uow.Chantiers.AddAsync(chantier, ct);
         await _uow.SaveChangesAsync(ct);
 
-        // --- Le montant du marché entre immédiatement en banque. Bénéfice et budget projet
+        // --- Compte bancaire du chantier, tel qu'il a été saisi. Bénéfice et budget projet
         //     restent sur LE MÊME compte : la division est comptable, pas bancaire. ---
         var compte = new CompteBancaire
         {
-            Nom = $"Compte {chantier.Nom}",
-            Banque = "BNI",
-            Numero = $"CH-{chantier.Code}",
+            Nom = string.IsNullOrWhiteSpace(dto.NomCompte) ? $"Compte {chantier.Nom}" : dto.NomCompte.Trim(),
+            Banque = string.IsNullOrWhiteSpace(dto.Banque) ? "—" : dto.Banque.Trim(),
+            Numero = string.IsNullOrWhiteSpace(dto.NumeroCompte) ? $"CH-{chantier.Code}" : dto.NumeroCompte.Trim(),
+            Devise = "Ar",
             Type = TypeCompteBancaire.Chantier,
             ChantierId = chantier.Id,
             Solde = 0m
@@ -101,28 +116,33 @@ public class ChantiersController : Controller
         await _uow.ComptesBancaires.AddAsync(compte, ct);
         await _uow.SaveChangesAsync(ct);
 
-        if (chantier.MontantMarche > 0)
+        // Seul l'argent RÉELLEMENT encaissé entre en banque : une avance de démarrage,
+        // un premier décompte... Les encaissements suivants se saisissent au fur et à
+        // mesure dans Banques › Dépôt. Créditer le marché entier d'un coup afficherait
+        // un solde que l'entreprise n'a pas.
+        if (dto.MontantEncaisse > 0)
         {
-            // 1) Encaissement du marché
             await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
             {
                 CompteBancaireId = compte.Id, ChantierId = chantier.Id, Date = DateTime.UtcNow,
-                Type = TypeMouvementBancaire.Depot, Montant = chantier.MontantMarche,
-                Motif = $"Encaissement du marché — {chantier.Nom}",
-                Reference = $"MARCHE-{chantier.Code}", EstValide = true
+                Type = TypeMouvementBancaire.Depot, Montant = dto.MontantEncaisse,
+                Motif = string.IsNullOrWhiteSpace(dto.MotifEncaissement)
+                    ? $"Premier encaissement — {chantier.Nom}"
+                    : dto.MotifEncaissement.Trim(),
+                Reference = $"ENC-{chantier.Code}", EstValide = true
             }, ct);
-            compte.Solde += chantier.MontantMarche;
-
-            // Le bénéfice reste sur le même compte : aucun mouvement de sortie.
-            // La séparation bénéfice / budget projet est purement comptable (voir fiche chantier).
+            compte.Solde += dto.MontantEncaisse;
             _uow.ComptesBancaires.Update(compte);
             await _uow.SaveChangesAsync(ct);
         }
 
         // À la création d'un chantier, on enchaîne directement sur la saisie de sa
         // prévision globale (budget projet = marché − bénéfice), conformément au processus métier.
-        TempData["Success"] = $"Chantier « {chantier.Nom} » créé. Marché de {chantier.MontantMarche:N0} Ar mis en banque " +
-                              $"(dont bénéfice {chantier.Benefice:N0} Ar). Budget projet à dépenser : {chantier.BudgetProjet:N0} Ar. " +
+        var resteAEncaisser = chantier.MontantMarche - dto.MontantEncaisse;
+        TempData["Success"] = $"Chantier « {chantier.Nom} » créé. Marché de {chantier.MontantMarche:N0} Ar, " +
+                              $"dont {dto.MontantEncaisse:N0} Ar encaissés sur le compte {compte.Banque} " +
+                              $"(reste à encaisser : {resteAEncaisser:N0} Ar). " +
+                              $"Budget projet à dépenser : {chantier.BudgetProjet:N0} Ar. " +
                               $"Saisissez maintenant la prévision globale.";
         return RedirectToAction("Create", "PrevisionGlobale", new { chantierId = chantier.Id });
     }
@@ -153,7 +173,9 @@ public class ChantiersController : Controller
         chantier.DateDebut = model.DateDebut;
         chantier.DateFin = model.DateFin;
         chantier.Statut = model.Statut;
-        chantier.BudgetMateriel = model.BudgetMateriel;
+        // Le Budget Matériel n'est pas saisi : on le réaligne sur le budget projet.
+        // Cela rattrape aussi les chantiers créés avant ce changement.
+        chantier.BudgetMateriel = chantier.BudgetProjet;
         chantier.Reserve = model.Reserve;
         chantier.PourcentageAvancement = model.PourcentageAvancement;
         chantier.Observation = model.Observation;

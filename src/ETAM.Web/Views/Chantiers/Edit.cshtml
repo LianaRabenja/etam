@@ -12,7 +12,9 @@
         <div class="col-md-4"><label class="form-label">Date fin</label><input asp-for="DateFin" type="date" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Statut</label>
             <select asp-for="Statut" asp-items="Html.GetEnumSelectList<ETAM.Domain.Enums.StatutChantier>()" class="form-select"></select></div>
-        <div class="col-md-4"><label class="form-label">Budget Matériel (Ar)</label><input asp-for="BudgetMateriel" type="number" step="0.01" class="form-control" /></div>
+        <div class="col-md-4"><label class="form-label">Budget projet / Budget Matériel (Ar)</label>
+            <input class="form-control bg-light" readonly value="@Model.BudgetProjet.ToString("N0")" />
+            <small class="text-muted">Calculé : marché − bénéfice.</small></div>
         <div class="col-md-4"><label class="form-label">Réserve (Ar)</label><input asp-for="Reserve" type="number" step="0.01" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Avancement (%)</label><input asp-for="PourcentageAvancement" type="number" step="1" min="0" max="100" class="form-control" /></div>
         <div class="col-12"><label class="form-label">Observation</label><textarea asp-for="Observation" class="form-control" rows="2"></textarea></div>
