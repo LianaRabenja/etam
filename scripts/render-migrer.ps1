@@ -22,8 +22,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$racine  = Split-Path $PSScriptRoot -Parent
-$fichier = Join-Path $racine "etam_local.sql"
+$racine = Split-Path $PSScriptRoot -Parent
+
+# Le dump sort du depot, volontairement : il contient les comptes utilisateurs,
+# leurs empreintes de mot de passe et les cles de chiffrement des cookies. Ecrit
+# dans le projet, un « git add -A » l'enverrait sur GitHub.
+$dossierSauvegardes = Join-Path $env:USERPROFILE "Documents\ETAM-sauvegardes"
+if (-not (Test-Path $dossierSauvegardes)) {
+    New-Item -ItemType Directory -Path $dossierSauvegardes -Force | Out-Null
+}
+$fichier = Join-Path $dossierSauvegardes "etam_local.sql"
 
 # ---------------------------------------------------------------------
 #  Retrouver les outils PostgreSQL, meme absents du PATH.

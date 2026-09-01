@@ -13,3 +13,12 @@ appsettings.Development.json
 secrets.json
 *.pfx
 *.key
+
+# Sauvegardes de base de données.
+# Un dump contient les comptes utilisateurs, leurs empreintes de mot de passe et
+# les clés de chiffrement (table DataProtectionKeys) qui signent les cookies de
+# connexion. Il n'a rien à faire dans un dépôt.
+etam_local.sql
+*.dump
+*.backup
+db-backup*/
