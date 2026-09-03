@@ -39,23 +39,7 @@ public class ChantierCreateDto
     public decimal MontantMarche { get; set; }
     /// <summary>Bénéfice conservé (ex : 80 000 000). Le reste va au chantier.</summary>
     public decimal Benefice { get; set; }
-    // Le Budget Matériel n'est plus saisi : il vaut toujours marché − bénéfice,
-    // et c'est le contrôleur qui le calcule à l'enregistrement.
+    public decimal BudgetMateriel { get; set; }
     public decimal Reserve { get; set; }
     public string? Observation { get; set; }
-
-    // --- Compte bancaire du chantier (créé en même temps que le chantier) ---
-    /// <summary>Nom de la banque (ex : BGFI Madagascar). Obligatoire à la saisie.</summary>
-    public string? Banque { get; set; }
-    /// <summary>Numéro du compte (ex : 41000869011-66).</summary>
-    public string? NumeroCompte { get; set; }
-    /// <summary>Intitulé du compte (ex : SARL ETAM). Par défaut « Compte {nom du chantier} ».</summary>
-    public string? NomCompte { get; set; }
-    /// <summary>
-    /// Argent RÉELLEMENT encaissé à ce jour (avance, premier décompte...).
-    /// Surtout pas le montant du marché : il n'est encaissé qu'au fil des décomptes.
-    /// </summary>
-    public decimal MontantEncaisse { get; set; }
-    /// <summary>Libellé de ce premier encaissement (ex : « Avance de démarrage 20 % »).</summary>
-    public string? MotifEncaissement { get; set; }
 }

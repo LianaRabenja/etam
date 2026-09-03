@@ -11,7 +11,7 @@ namespace ETAM.Web.Controllers;
 /// Décaissements : les sorties d'argent réelles à l'intérieur d'une prévision
 /// journalière. Chaque enregistrement débite un compte bancaire.
 /// </summary>
-[Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+[Authorize]
 public class DecaissementController : Controller
 {
     private readonly IUnitOfWork _uow;

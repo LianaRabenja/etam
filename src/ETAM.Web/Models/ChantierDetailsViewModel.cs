@@ -15,17 +15,4 @@ public class ChantierDetailsViewModel
     public List<DetteFournisseur> Dettes { get; set; } = new();
     public List<Alerte> Alertes { get; set; } = new();
     public List<RapportTravail> RapportsTravail { get; set; } = new();
-
-    /// <summary>
-    /// Total sorti de la banque pour ce chantier depuis le début : somme des retraits
-    /// déclenchés par l'exécution des prévisions journalières.
-    /// </summary>
-    public decimal TotalRetire { get; set; }
-
-    /// <summary>
-    /// Argent retiré mais pas encore distribué — ce que le chef de chantier détient
-    /// physiquement. Sans cet indicateur, cette somme n'apparaissait nulle part :
-    /// elle n'existait que dans le report du lendemain.
-    /// </summary>
-    public decimal CaisseChantier => TotalRetire - Chantier.Consommation;
 }

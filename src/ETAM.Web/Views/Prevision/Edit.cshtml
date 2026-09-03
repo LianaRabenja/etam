@@ -2,8 +2,11 @@
 @{
     ViewData["Title"] = "Modifier la prévision";
     var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>;
+    var dettes = ViewBag.Dettes as IEnumerable<ETAM.Domain.Entities.DetteFournisseur> ?? Enumerable.Empty<ETAM.Domain.Entities.DetteFournisseur>();
     var catalogue = ViewBag.Catalogue as IEnumerable<ETAM.Domain.Entities.ArticleCatalogue> ?? Enumerable.Empty<ETAM.Domain.Entities.ArticleCatalogue>();
     var categories = ViewBag.Categories as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var postes = ViewBag.PostesGlobaux as IEnumerable<ETAM.Application.DTOs.PosteGlobalDto>
+                 ?? Enumerable.Empty<ETAM.Application.DTOs.PosteGlobalDto>();
     long prevId = ViewBag.PrevId;
 }
 <div class="etam-card p-4">
@@ -23,10 +26,7 @@
     </div>
     <h6 class="fw-bold">Lignes</h6>
     <table class="table table-sm align-middle" id="tblLignes">
-        <thead><tr>
-            <th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th>
-            <th>Prix unit. estimé</th><th style="width:160px" class="text-end">Total</th><th></th>
-        </tr></thead>
+        <thead><tr><th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th><th>Prix unit. estimé</th><th style="min-width:230px">Poste prévu (enveloppe)</th><th>Dette</th><th></th></tr></thead>
         <tbody>
         @for (int idx = 0; idx < Model.Lignes.Count; idx++)
         {
@@ -37,17 +37,37 @@
                 <td><select name="Lignes[@idx].TypeBudget" class="form-select form-select-sm">
                         <option value="0" selected="@(l.TypeBudget == ETAM.Domain.Enums.TypeBudget.Compte)">Compte</option>
                         <option value="1" selected="@(l.TypeBudget == ETAM.Domain.Enums.TypeBudget.Materiel)">Matériel</option></select></td>
-                <td><input name="Lignes[@idx].Quantite" type="number" step="0.001" value="@l.Quantite" class="form-control form-control-sm js-qte"></td>
+                <td><input name="Lignes[@idx].Quantite" type="number" step="0.001" value="@l.Quantite" class="form-control form-control-sm"></td>
                 <td><input name="Lignes[@idx].PrixUnitaireEstime" type="number" step="0.01" value="@l.PrixUnitaireEstime" class="form-control form-control-sm js-prix"></td>
-                <td class="text-end js-total">0</td>
+                <td>
+                    <select name="Lignes[@idx].PrevisionGlobaleLigneId" class="form-select form-select-sm js-poste">
+                        <option value="">— non rattaché —</option>
+                        @foreach (var g in postes.Where(p => p.ChantierId == Model.ChantierId)
+                                                 .GroupBy(p => p.Rubrique))
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var p in g)
+                                {
+                                    <option value="@p.Id"
+                                            data-reste="@p.Reste.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                            selected="@(l.PrevisionGlobaleLigneId == p.Id)">
+                                        @p.Designation — reste @p.Reste.ToString("N0")
+                                    </option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                    <small class="js-reste text-muted"></small>
+                </td>
+                <td><select name="Lignes[@idx].DetteFournisseurId" class="form-select form-select-sm">
+                        <option value="">—</option>
+                        @foreach (var d in dettes)
+                        { <option value="@d.Id" selected="@(l.DetteFournisseurId == d.Id)">@d.Fournisseur?.Nom - @d.Libelle</option> }
+                    </select></td>
                 <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
             </tr>
         }
         </tbody>
-        <tfoot><tr>
-            <th colspan="5" class="text-end">Total de la journée</th>
-            <th class="text-end" id="totalJour">0</th><th></th>
-        </tr></tfoot>
     </table>
     <button type="button" class="btn btn-sm btn-light" id="btnAdd"><i class="fa-solid fa-plus me-1"></i> Ajouter une ligne</button>
     <div class="mt-4">
@@ -56,6 +76,12 @@
     </div>
 </form>
 </div>
+
+<select id="detteTemplate" class="d-none">
+    <option value="">—</option>
+    @foreach (var d in dettes)
+    { <option value="@d.Id">@d.Fournisseur?.Nom - @d.Libelle (reste @d.SoldeRestant.ToString("N0"))</option> }
+</select>
 
 <datalist id="listeDesignations">
     @foreach (var a in catalogue)
@@ -68,45 +94,61 @@
 @section Scripts {
 <partial name="_ValidationScriptsPartial" />
 <script>
+  const detteOptions = document.getElementById('detteTemplate').innerHTML;
+  // Postes de la prévision globale du chantier : gabarit repris pour les lignes ajoutées.
+  const posteOptions = document.querySelector('.js-poste')?.innerHTML
+                    ?? '<option value="">— non rattaché —</option>';
   const fmt = v => new Intl.NumberFormat('fr-FR').format(Math.round(v || 0));
-  let i = @Model.Lignes.Count;
 
+  // Affiche le reste de l'enveloppe et signale un dépassement.
+  function majReste(sel){
+    const tr = sel.closest('tr');
+    const info = tr.querySelector('.js-reste');
+    const opt = sel.options[sel.selectedIndex];
+    if(!info) return;
+    if(!opt || !opt.value){ info.textContent = ''; info.className = 'js-reste text-muted'; return; }
+    const reste = parseFloat(opt.getAttribute('data-reste')) || 0;
+    const q = parseFloat(tr.querySelector('[name$=".Quantite"]').value) || 0;
+    const p = parseFloat(tr.querySelector('.js-prix').value) || 0;
+    const montant = q * p;
+    if(montant > reste){
+      info.textContent = `Dépasse l'enveloppe de ${fmt(montant - reste)} Ar`;
+      info.className = 'js-reste text-danger fw-semibold';
+    } else {
+      info.textContent = `Reste après cette ligne : ${fmt(reste - montant)} Ar`;
+      info.className = 'js-reste text-success';
+    }
+  }
+  document.addEventListener('change', e => { if(e.target.classList.contains('js-poste')) majReste(e.target); });
+  document.addEventListener('input', e => {
+    const tr = e.target.closest('tr'); if(!tr) return;
+    const sel = tr.querySelector('.js-poste');
+    if(sel && (e.target.classList.contains('js-prix') || e.target.name?.endsWith('.Quantite'))) majReste(sel);
+  });
+  document.querySelectorAll('.js-poste').forEach(majReste);
+
+  let i = @Model.Lignes.Count;
   function row(){
     const r = `<tr>
       <td><input name="Lignes[${i}].Designation" list="listeDesignations" class="form-control form-control-sm js-des" required></td>
       <td><input name="Lignes[${i}].Categorie" list="listeCategories" class="form-control form-control-sm js-cat" required></td>
       <td><select name="Lignes[${i}].TypeBudget" class="form-select form-select-sm">
             <option value="0">Compte</option><option value="1">Matériel</option></select></td>
-      <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm js-qte" value="1"></td>
+      <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm" value="1"></td>
       <td><input name="Lignes[${i}].PrixUnitaireEstime" type="number" step="0.01" class="form-control form-control-sm js-prix" value="0"></td>
-      <td class="text-end js-total">0</td>
+      <td>
+        <select name="Lignes[${i}].PrevisionGlobaleLigneId" class="form-select form-select-sm js-poste">${posteOptions}</select>
+        <small class="js-reste text-muted"></small>
+      </td>
+      <td><select name="Lignes[${i}].DetteFournisseurId" class="form-select form-select-sm">${detteOptions}</select></td>
       <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
-    document.querySelector('#tblLignes tbody').insertAdjacentHTML('beforeend', r);
-    i++;
-    majTotaux();
+    document.querySelector('#tblLignes tbody').insertAdjacentHTML('beforeend', r); i++;
   }
   document.getElementById('btnAdd').addEventListener('click', row);
-  document.addEventListener('click', e=>{
-    if(e.target.closest('.js-del')){ e.target.closest('tr').remove(); majTotaux(); }
-  });
+  document.addEventListener('click', e=>{ if(e.target.closest('.js-del')) e.target.closest('tr').remove(); });
 
-  function majTotaux(){
-    let somme = 0;
-    document.querySelectorAll('#tblLignes tbody tr').forEach(tr => {
-      const q = parseFloat(tr.querySelector('.js-qte')?.value) || 0;
-      const p = parseFloat(tr.querySelector('.js-prix')?.value) || 0;
-      const t = q * p;
-      somme += t;
-      const cell = tr.querySelector('.js-total');
-      if(cell) cell.textContent = fmt(t);
-    });
-    document.getElementById('totalJour').textContent = fmt(somme);
-  }
-  document.addEventListener('input', majTotaux);
-  document.addEventListener('change', majTotaux);
-
-  // Pré-remplissage catégorie/prix depuis le catalogue (le prix reste modifiable ensuite).
+  // Pré-remplissage catégorie/prix depuis le catalogue (le prix reste toujours modifiable ensuite).
   function preremplir(target){
     if(!target.classList.contains('js-des')) return;
     const opt = document.querySelector('#listeDesignations option[value="'+ target.value.replace(/"/g,'\\"') +'"]');
@@ -115,12 +157,9 @@
     const prix = opt.getAttribute('data-prix'), cat = opt.getAttribute('data-cat');
     if(cat) tr.querySelector('.js-cat').value = cat;
     if(prix) tr.querySelector('.js-prix').value = prix;
-    majTotaux();
   }
   document.addEventListener('input', e => preremplir(e.target));
   document.addEventListener('change', e => preremplir(e.target));
   document.addEventListener('blur', e => preremplir(e.target), true);
-
-  majTotaux();
 </script>
 }

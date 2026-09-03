@@ -185,21 +185,7 @@ public class BanquesController : Controller
     private async Task EnregistrerDemandeTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (montant <= 0) { TempData["Error"] = "Le montant doit être positif."; return; }
-
-        // Un transfert vers le Budget Matériel d'un chantier est un FLÉCHAGE, pas un
-        // retrait : rien ne quitte la banque (voir AppliquerTransfertAsync). On peut donc
-        // réserver au titre du marché plus que ce qui est encaissé à cet instant. La
-        // trésorerie est contrôlée au vrai moment du retrait, à l'exécution de la
-        // prévision journalière. En revanche le transfert vers le Budget Comptes débite
-        // bien le compte : la contrainte de solde y reste indispensable.
-        if (compte.Type != TypeCompteBancaire.Chantier && montant > compte.Solde)
-        {
-            TempData["Error"] = $"Solde insuffisant sur le compte ({compte.Solde:N0} Ar).";
-            return;
-        }
-
-        var depassement = await VerifierPlafondMaterielAsync(compte, montant, ct);
-        if (depassement is not null) { TempData["Error"] = depassement; return; }
+        if (montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant sur le compte ({compte.Solde:N0} Ar)."; return; }
 
         var estAdmin = User.IsInRole("Administrateur");
         var cibleNom = compte.Type == TypeCompteBancaire.Comptes
@@ -211,11 +197,7 @@ public class BanquesController : Controller
             CompteBancaireId = compte.Id,
             Type = TypeMouvementBancaire.Virement,
             Montant = montant,
-            // Pour un chantier, la ligne trace le fléchage : elle ne bouge pas le solde.
-            // Sans cette mention, on lirait un virement de 400 M pour un solde inchangé.
-            Motif = compte.Type == TypeCompteBancaire.Chantier
-                ? $"Fléchage vers {cibleNom} (aucun mouvement de fonds)"
-                : $"Transfert vers {cibleNom}",
+            Motif = $"Transfert vers {cibleNom}",
             ChantierId = compte.ChantierId,
             Date = DateTime.UtcNow,
             EstValide = estAdmin,
@@ -225,10 +207,7 @@ public class BanquesController : Controller
         if (estAdmin)
         {
             await AppliquerTransfertAsync(compte, montant, ct);
-            TempData["Success"] = compte.Type == TypeCompteBancaire.Chantier
-                ? $"{montant:N0} Ar fléchés vers le {cibleNom}. Le budget réel a augmenté d'autant ; " +
-                  $"le solde bancaire ne bouge qu'aux retraits (exécution des prévisions journalières)."
-                : $"{montant:N0} Ar transférés vers le {cibleNom}. Le budget réel a augmenté d'autant.";
+            TempData["Success"] = $"{montant:N0} Ar transférés vers le {cibleNom}. Le budget réel a augmenté d'autant.";
         }
         else
         {
@@ -246,13 +225,7 @@ public class BanquesController : Controller
         if (mvt is null || mvt.EstValide) { TempData["Error"] = "Demande introuvable ou déjà validée."; return RedirectToAction(nameof(Index)); }
         var compte = await _uow.ComptesBancaires.GetByIdAsync(mvt.CompteBancaireId, ct);
         if (compte is null) return NotFound();
-        if (compte.Type != TypeCompteBancaire.Chantier && mvt.Montant > compte.Solde)
-        { TempData["Error"] = $"Solde insuffisant ({compte.Solde:N0} Ar)."; return RedirectToAction(nameof(Index)); }
-
-        // Le plafond est revérifié ici : entre la demande et sa validation, d'autres
-        // transferts ont pu être appliqués sur le même chantier.
-        var depassement = await VerifierPlafondMaterielAsync(compte, mvt.Montant, ct);
-        if (depassement is not null) { TempData["Error"] = depassement; return RedirectToAction(nameof(Index)); }
+        if (mvt.Montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant ({compte.Solde:N0} Ar)."; return RedirectToAction(nameof(Index)); }
 
         await AppliquerTransfertAsync(compte, mvt.Montant, ct);
         mvt.EstValide = true;
@@ -277,50 +250,7 @@ public class BanquesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    /// <summary>
-    /// Vérifie qu'un transfert vers le Budget Matériel d'un chantier ne fait pas dépasser
-    /// son plafond (BudgetMateriel = marché − bénéfice).
-    ///
-    /// Sans ce contrôle, le plafond affiché sur la fiche chantier ne voulait rien dire :
-    /// on pouvait transférer la totalité du solde bancaire — bénéfice compris — vers le
-    /// budget d'exécution, et le dépenser. Le seul garde-fou existant était la trésorerie
-    /// disponible, ce qui n'est pas la même contrainte que le budget contractuel.
-    ///
-    /// Renvoie null si le transfert est acceptable, sinon le message d'erreur à afficher.
-    /// </summary>
-    private async Task<string?> VerifierPlafondMaterielAsync(
-        CompteBancaire compte, decimal montant, CancellationToken ct)
-    {
-        if (compte.Type != TypeCompteBancaire.Chantier || !compte.ChantierId.HasValue) return null;
-
-        var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
-        // Plafond à 0 : chantier créé avant la mise en place du calcul automatique.
-        // On ne bloque pas, sinon plus aucun transfert ne serait possible sur ces chantiers.
-        if (chantier is null || chantier.BudgetMateriel <= 0) return null;
-
-        var restant = chantier.BudgetMateriel - chantier.MaterielTransfere;
-        if (montant <= restant) return null;
-
-        return $"Plafond du Budget Matériel dépassé : {chantier.MaterielTransfere:N0} Ar déjà transférés " +
-               $"sur un budget projet de {chantier.BudgetMateriel:N0} Ar. " +
-               $"Il reste {(restant > 0 ? restant : 0):N0} Ar transférables.";
-    }
-
-    /// <summary>
-    /// Applique le transfert : alimente le budget réel correspondant.
-    ///
-    /// IMPORTANT — cas d'un chantier : la banque n'est PAS débitée ici. Le transfert
-    /// vers le Budget Matériel est un fléchage comptable (« sur ce que j'ai encaissé,
-    /// je réserve tant pour les travaux »), pas un passage au guichet. L'argent quitte
-    /// réellement le compte à l'exécution d'une prévision journalière, quand le chef de
-    /// chantier va chercher les fonds (voir PrevisionService, « L'ARGENT SORT ICI »).
-    ///
-    /// Débiter aux deux endroits faisait sortir deux fois la même somme : un transfert
-    /// de 400 M suivi de 400 M de prévisions vidait le compte de 800 M.
-    ///
-    /// Le Budget Comptes de l'entreprise, lui, n'a pas d'équivalent au retrait : ses
-    /// dépenses ne repassent jamais par la banque. Son transfert continue donc de débiter.
-    /// </summary>
+    // Applique le transfert : débite la banque et alimente le budget réel correspondant.
     private async Task AppliquerTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (compte.Type == TypeCompteBancaire.Comptes)
@@ -328,15 +258,13 @@ public class BanquesController : Controller
             var budget = (await _uow.BudgetsComptes.ListAsync(bg => bg.EstActif, ct))
                 .OrderByDescending(bg => bg.Annee).FirstOrDefault();
             if (budget is not null) { budget.MontantTransfere += montant; _uow.BudgetsComptes.Update(budget); }
-
-            compte.Solde -= montant;
-            _uow.ComptesBancaires.Update(compte);
         }
         else if (compte.ChantierId.HasValue)
         {
             var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
             if (chantier is not null) { chantier.MaterielTransfere += montant; _uow.Chantiers.Update(chantier); }
-            // Aucun mouvement bancaire : voir le commentaire ci-dessus.
         }
+        compte.Solde -= montant;
+        _uow.ComptesBancaires.Update(compte);
     }
 }

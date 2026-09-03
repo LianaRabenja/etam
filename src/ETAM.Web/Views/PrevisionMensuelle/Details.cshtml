@@ -102,21 +102,6 @@
                     <i class="fa-solid fa-lock me-1"></i> Clôturer le mois et reporter le reste
                 </button>
             </form>
-
-            @* Erreur de mois à la création : tant que rien n'a été dépensé, l'enveloppe
-               doit pouvoir être annulée, sinon son montant reste décompté du budget
-               du projet et bloque la création des vrais mois. *@
-            @if (Model.MontantConsomme == 0)
-            {
-                <form asp-action="Refuser" asp-route-id="@Model.Id" method="post" class="d-flex gap-2"
-                      onsubmit="return confirm('Annuler l\'enveloppe de @Model.Libelle ? Ses @Model.MontantPrevu.ToString("N0") Ar redeviendront disponibles pour les autres mois.');">
-                    @Html.AntiForgeryToken()
-                    <input name="motif" class="form-control" placeholder="Motif (ex : mois erroné)" required />
-                    <button class="btn btn-outline-danger text-nowrap">
-                        <i class="fa-solid fa-ban me-1"></i> Annuler cette enveloppe
-                    </button>
-                </form>
-            }
         }
     </div>
 }

@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ETAM.Web.Controllers;
 
-[Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+[Authorize]
 public class ApprovisionnementController : Controller
 {
     private readonly IUnitOfWork _uow;

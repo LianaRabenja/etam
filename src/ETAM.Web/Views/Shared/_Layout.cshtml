@@ -51,11 +51,12 @@
             var isRF = User.IsInRole("Correspondant");
             var isChef = User.IsInRole("Chef de chantier");
             var isMagasinier = User.IsInRole("Magasinier");
-            // Le bureau : la Direction et la Finance. Elles voient l'argent de bout en bout.
-            var estBureau = isAdmin || isRF;
-            // Ceux qui suivent la vie d'un chantier au jour le jour, chef compris.
-            var suitLeChantier = estBureau || isChef;
-            // Le magasin : seul le magasinier et le chef y touchent.
+            var voitChantiers = isAdmin || isRF;
+            var voitAppro = isAdmin || isRF || isChef;
+            var voitPrev = isAdmin || isRF;
+            var voitBanques = isAdmin || isRF;
+            var voitRapports = isAdmin || isRF;
+            var voitRapportsTravail = isAdmin || isRF || isChef;
             var voitStock = isAdmin || isChef || isMagasinier;
         }
         @*
@@ -65,25 +66,25 @@
         *@
         <ul class="etam-nav">
 
-            @if (estBureau) { <li><a class="@Active("Home")" href="/Home/Index"><i class="fa-solid fa-gauge-high"></i> Tableau de bord</a></li> }
-            @if (!estBureau) { <li><a href="/Home/Accueil"><i class="fa-solid fa-house"></i> Accueil</a></li> }
+            @if (isAdmin || isRF) { <li><a class="@Active("Home")" href="/Home/Index"><i class="fa-solid fa-gauge-high"></i> Tableau de bord</a></li> }
+            @if (!isAdmin && !isRF) { <li><a href="/Home/Accueil"><i class="fa-solid fa-house"></i> Accueil</a></li> }
 
-            @if (suitLeChantier) { <li class="section">Dans cet ordre</li> }
+            @if (isAdmin || isRF || isChef) { <li class="section">Dans cet ordre</li> }
 
-            @if (estBureau) { <li><a class="@Active("Chantiers")" href="/Chantiers/Index"><i class="fa-solid fa-helmet-safety"></i> <b>1.</b> Chantiers</a></li> }
-            @if (estBureau) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Prévision journalière</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> <b>6.</b> Demande du chantier</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-hand-holding-dollar"></i> <b>7.</b> Prévision réelle</a></li> }
-            @if (estBureau) { <li><a href="/Prevision/Recap"><i class="fa-solid fa-file-invoice"></i> <b>8.</b> Recap du jour</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("Decaissement")" href="/Decaissement/Index"><i class="fa-solid fa-money-bill-transfer"></i> <b>9.</b> Sorties d'argent</a></li> }
-            @if (suitLeChantier) { <li><a class="@Active("RapportsPrevision")" href="/RapportsPrevision/Index"><i class="fa-solid fa-clipboard-check"></i> <b>10.</b> Comptes rendus</a></li> }
+            @if (voitChantiers) { <li><a class="@Active("Chantiers")" href="/Chantiers/Index"><i class="fa-solid fa-helmet-safety"></i> <b>1.</b> Chantiers</a></li> }
+            @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Prévision journalière</a></li> }
+            @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> <b>6.</b> Demande du chantier</a></li> }
+            @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-hand-holding-dollar"></i> <b>7.</b> Prévision réelle</a></li> }
+            @if (voitPrev) { <li><a href="/Prevision/Recap"><i class="fa-solid fa-file-invoice"></i> <b>8.</b> Recap du jour</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("Decaissement")" href="/Decaissement/Index"><i class="fa-solid fa-money-bill-transfer"></i> <b>9.</b> Sorties d'argent</a></li> }
+            @if (isAdmin || isRF || isChef) { <li><a class="@Active("RapportsPrevision")" href="/RapportsPrevision/Index"><i class="fa-solid fa-clipboard-check"></i> <b>10.</b> Comptes rendus</a></li> }
 
-            @if (voitStock || estBureau) { <li class="section">Au quotidien</li> }
+            @if (voitStock || isAdmin) { <li class="section">Au quotidien</li> }
             @if (voitStock) { <li><a class="@Active("Materiaux")" href="/Materiaux/Index"><i class="fa-solid fa-trowel-bricks"></i> Stock des matériaux</a></li> }
-            @if (estBureau) { <li><a href="/Alertes/Index"><i class="fa-solid fa-bell"></i> Alertes</a></li> }
+            @if (isAdmin) { <li><a href="/Alertes/Index"><i class="fa-solid fa-bell"></i> Alertes</a></li> }
         </ul>
 
         @* Tout ce qui ne sert pas tous les jours : replié par défaut. *@
@@ -93,15 +94,15 @@
                 <i class="fa-solid fa-ellipsis me-1"></i> Réglages et suivi
             </summary>
             <ul class="etam-nav">
-                @if (estBureau) { <li><a class="@Active("Catalogue")" href="/Catalogue/Index"><i class="fa-solid fa-list-check"></i> Catalogue des prix</a></li> }
+                @if (isAdmin || isRF) { <li><a class="@Active("Catalogue")" href="/Catalogue/Index"><i class="fa-solid fa-list-check"></i> Catalogue des prix</a></li> }
                 @if (isAdmin) { <li><a class="@Active("Fournisseurs")" href="/Fournisseurs/Index"><i class="fa-solid fa-truck-field"></i> Fournisseurs</a></li> }
                 @if (isAdmin) { <li><a class="@Active("Dettes")" href="/Dettes/Index"><i class="fa-solid fa-file-invoice-dollar"></i> Dettes fournisseurs</a></li> }
                 @if (isAdmin) { <li><a href="/Utilisateurs/Index"><i class="fa-solid fa-users"></i> Utilisateurs</a></li> }
-                @if (suitLeChantier) { <li><a class="@Active("RapportsTravail")" href="/RapportsTravail/Index"><i class="fa-solid fa-file-signature"></i> Rapports de travail</a></li> }
+                @if (voitRapportsTravail) { <li><a class="@Active("RapportsTravail")" href="/RapportsTravail/Index"><i class="fa-solid fa-file-signature"></i> Rapports de travail</a></li> }
                 @if (isAdmin) { <li><a href="/BudgetComptes/Index"><i class="fa-solid fa-wallet"></i> Budget du bureau</a></li> }
                 @if (isAdmin) { <li><a href="/BudgetMateriel/Index"><i class="fa-solid fa-boxes-stacked"></i> Budget matériel</a></li> }
                 @if (isAdmin) { <li><a href="/Depenses/Index"><i class="fa-solid fa-receipt"></i> Journal des dépenses</a></li> }
-                @if (estBureau) { <li><a href="/Rapports/Index"><i class="fa-solid fa-chart-pie"></i> Rapports et statistiques</a></li> }
+                @if (voitRapports) { <li><a href="/Rapports/Index"><i class="fa-solid fa-chart-pie"></i> Rapports et statistiques</a></li> }
                 @if (isAdmin) { <li><a href="/Audit/Index"><i class="fa-solid fa-clipboard-list"></i> Journal d'audit</a></li> }
                 @if (isAdmin) { <li><a href="/Parametres/Index"><i class="fa-solid fa-gear"></i> Paramètres</a></li> }
             </ul>
@@ -170,29 +171,6 @@
   // Empêche l'alerte bloquante « Incorrect column count » de DataTables
   // (qui faisait apparaître les tableaux comme "cassés").
   if (window.jQuery && $.fn.dataTable) { $.fn.dataTable.ext.errMode = 'none'; }
-
-  // ---- Tri des dates au format francais -------------------------------------
-  // DataTables compare les cellules comme du texte : « 01/09/2026 » passait donc
-  // AVANT « 15/07/2026 », parce que « 0 » vient avant « 1 ». Les dates paraissaient
-  // melangees. On declare ici un type de colonne « date-fr » qui trie sur la date
-  // reelle. Declare une seule fois, il s'applique a tous les tableaux du site.
-  if (window.jQuery && $.fn.dataTable) {
-    var reDateFr = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[\s,]+(\d{1,2})[:h](\d{2}))?\s*$/;
-
-    $.fn.dataTable.ext.type.detect.unshift(function(d){
-      if (d === null || d === undefined) return null;
-      var s = String(d).trim();
-      // Les cellules vides ne doivent pas faire retomber la colonne en tri texte.
-      if (s === '' || s === '-' || s === '—') return 'date-fr';
-      return reDateFr.test(s) ? 'date-fr' : null;
-    });
-
-    $.fn.dataTable.ext.type.order['date-fr-pre'] = function(d){
-      var m = reDateFr.exec(String(d == null ? '' : d).trim());
-      if (!m) return 0;   // vide : trie avant tout le reste
-      return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
-    };
-  }
 
   $(function(){
     // Chaque tableau est initialisé indépendamment : si l'un pose problème,
