@@ -103,6 +103,29 @@
                 </button>
             </form>
         }
+
+        @* L'Administrateur doit pouvoir revenir sur son enveloppe tant qu'elle n'a rien
+           financé : corriger le montant, ou la supprimer si le mois était le mauvais.
+           Dès le premier décaissement, le mois devient un fait comptable. *@
+        @if (Model.MontantConsomme == 0 && Model.Statut != StatutPrevisionMensuelle.Cloturee)
+        {
+            <form asp-action="ModifierMontant" asp-route-id="@Model.Id" method="post" class="d-flex gap-2">
+                @Html.AntiForgeryToken()
+                <input name="montantPrevu" type="number" step="1" min="1" class="form-control"
+                       style="max-width:200px" value="@Model.MontantPrevu.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                <button class="btn btn-outline-primary text-nowrap">
+                    <i class="fa-solid fa-pen me-1"></i> Corriger le montant
+                </button>
+            </form>
+
+            <form asp-action="Supprimer" asp-route-id="@Model.Id" method="post"
+                  onsubmit="return confirm('Supprimer l\'enveloppe de @Model.Libelle ? Ses @Model.MontantPrevu.ToString("N0") Ar redeviendront disponibles pour les autres mois.');">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-outline-danger text-nowrap">
+                    <i class="fa-solid fa-trash me-1"></i> Supprimer l'enveloppe
+                </button>
+            </form>
+        }
     </div>
 }
 

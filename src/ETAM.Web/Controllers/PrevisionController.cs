@@ -499,9 +499,13 @@ public class PrevisionController : Controller
         var p = await _uow.Previsions.Query().AsNoTracking()
             .Include(x => x.Lignes).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (p is null) return NotFound();
-        if (!p.EstModifiable)
+        // L'Administrateur peut corriger une prévision déjà validée ou exécutée tant
+        // qu'aucun argent n'a été distribué : il doit pouvoir changer d'avis.
+        if (!p.EstModifiable && !(User.IsInRole("Administrateur") && p.ReversibleParAdministrateur))
         {
-            TempData["Error"] = "Cette prévision est validée par l'Administrateur : elle n'est plus modifiable.";
+            TempData["Error"] = p.MontantDecaisse > 0
+                ? $"Cette prévision a déjà donné lieu à {p.MontantDecaisse:N0} Ar de sorties d'argent : elle n'est plus modifiable."
+                : "Cette prévision est validée par l'Administrateur : elle n'est plus modifiable.";
             return RedirectToAction(nameof(Details), new { id });
         }
 
@@ -534,7 +538,7 @@ public class PrevisionController : Controller
         var p = await _uow.Previsions.Query()
             .Include(x => x.Lignes).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (p is null) return NotFound();
-        if (!p.EstModifiable)
+        if (!p.EstModifiable && !(User.IsInRole("Administrateur") && p.ReversibleParAdministrateur))
         {
             TempData["Error"] = "Cette prévision n'est plus modifiable.";
             return RedirectToAction(nameof(Details), new { id });
@@ -603,6 +607,85 @@ public class PrevisionController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Refuser(long id, string motif, CancellationToken ct)
         => Retour(await _service.RefuserAsync(id, motif ?? "Non précisé", ct));
+
+    /// <summary>
+    /// Supprime une prévision journalière. Réservé à l'Administrateur, et seulement
+    /// tant qu'aucun argent n'a été distribué.
+    ///
+    /// Si la prévision avait été exécutée, l'argent était sorti de la banque : on
+    /// recrédite le compte et on annule le retrait, sinon le solde resterait faux.
+    /// On détache aussi la prévision suivante qui aurait repris son reliquat, pour ne
+    /// pas casser la chaîne des reports.
+    /// </summary>
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Supprimer(long id, CancellationToken ct)
+    {
+        var p = await _uow.Previsions.Query()
+            .Include(x => x.Lignes)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+
+        if (!p.ReversibleParAdministrateur)
+        {
+            TempData["Error"] =
+                $"Impossible de supprimer : {p.MontantDecaisse:N0} Ar ont déjà été distribués sur cette journée. " +
+                "Une prévision qui a servi ne se supprime pas, elle se clôture.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var reference = p.Reference;
+        await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            // 1) Rendre l'argent à la banque si la prévision avait été exécutée.
+            if (p.Statut == StatutPrevision.Executee || p.Statut == StatutPrevision.RapportSoumis)
+            {
+                var retrait = await _uow.MouvementsBancaires.Query()
+                    .FirstOrDefaultAsync(m => m.ChantierId == p.ChantierId
+                                           && m.Type == TypeMouvementBancaire.Retrait
+                                           && m.Motif != null && m.Motif.Contains(reference), ct);
+                if (retrait is not null)
+                {
+                    var compte = await _uow.ComptesBancaires.GetByIdAsync(retrait.CompteBancaireId, ct);
+                    if (compte is not null)
+                    {
+                        compte.Solde += retrait.Montant;
+                        _uow.ComptesBancaires.Update(compte);
+                    }
+                    _uow.MouvementsBancaires.Remove(retrait);
+                }
+            }
+
+            // 2) Ne pas laisser la journée suivante pointer dans le vide.
+            var suivante = await _uow.Previsions.Query()
+                .FirstOrDefaultAsync(x => x.PrevisionPrecedenteId == p.Id, ct);
+            if (suivante is not null)
+            {
+                suivante.PrevisionPrecedenteId = null;
+                suivante.ReportVeille = 0;
+                _uow.Previsions.Update(suivante);
+            }
+
+            // 3) Les lignes, puis la prévision.
+            foreach (var l in p.Lignes.Where(l => !l.IsDeleted))
+                _uow.PrevisionLignes.Remove(l);
+            _uow.Previsions.Remove(p);
+
+            await _uow.SaveChangesAsync(ct);
+            await _uow.CommitAsync(ct);
+
+            TempData["Success"] = $"Prévision {reference} supprimée.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (Exception ex)
+        {
+            await _uow.RollbackAsync(ct);
+            TempData["Error"] = "La suppression a échoué : " + ex.Message;
+            return RedirectToAction(nameof(Details), new { id });
+        }
+    }
 
     // ===== Les deux feuilles que l'entreprise sort chaque jour =====
 

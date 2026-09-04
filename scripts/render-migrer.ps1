@@ -145,7 +145,15 @@ Write-Host "Le service web doit etre EN PAUSE, sinon il creera le schema avant v
 
 Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue   # le mot de passe est dans l'URL
 
-& $psql $url -v ON_ERROR_STOP=1 -f "$fichier"
+# Le dump est en UTF8 : sans cette variable, psql sous Windows le lit avec la page
+# de codes 1252 et massacre les accents (« Diego-Suarez », « Prévision »...).
+$env:PGCLIENTENCODING = "UTF8"
+
+# Les options passent AVANT l'URL, et sous la forme --option=valeur.
+# Ecrites « -v ON_ERROR_STOP=1 -f fichier » apres l'URL, psql les prenait pour des
+# arguments positionnels, les ignorait, et ouvrait son invite interactive au lieu
+# d'executer le fichier.
+& $psql --set=ON_ERROR_STOP=1 --file="$fichier" "$url"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
@@ -161,7 +169,7 @@ Write-Host ""
 Write-Host "Verification :" -ForegroundColor Cyan
 
 $verif = @"
-SELECT 'Migrations (doit etre 17)' AS controle, count(*)::text AS valeur FROM "__EFMigrationsHistory"
+SELECT 'Migrations (doit etre 18)' AS controle, count(*)::text AS valeur FROM "__EFMigrationsHistory"
 UNION ALL SELECT 'Chantiers',    count(*)::text FROM "Chantiers"
 UNION ALL SELECT 'Comptes bancaires', count(*)::text FROM "ComptesBancaires"
 UNION ALL SELECT 'Enveloppes',   count(*)::text FROM "PrevisionsMensuelles"
@@ -169,7 +177,7 @@ UNION ALL SELECT 'Utilisateurs', count(*)::text FROM "AspNetUsers"
 UNION ALL SELECT 'Catalogue',    count(*)::text FROM "Catalogue";
 "@
 
-& $psql $url -c $verif
+& $psql --command=$verif "$url"
 
 Write-Host ""
 Write-Host "Termine. Sur Render : Settings > Resume Web Service, puis Manual Deploy." -ForegroundColor Green
