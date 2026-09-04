@@ -153,27 +153,58 @@ public class PrevisionMensuelleController : Controller
     }
 
     /// <summary>
-    /// Corrige le montant d'une enveloppe, même déjà ouverte. Réservé à l'Administrateur,
-    /// et seulement tant qu'aucune sortie d'argent ne s'y est imputée : après, le mois
-    /// est un fait comptable. Le plafond du budget projet reste vérifié.
+    /// Écran de correction d'une enveloppe : montant, observation ET répartition par
+    /// rubrique. Réservé à l'Administrateur, et seulement tant qu'aucune sortie d'argent
+    /// ne s'y est imputée — après, le mois est un fait comptable.
+    ///
+    /// Le chantier, l'année et le mois ne sont pas modifiables : les changer reviendrait
+    /// à créer une autre enveloppe, et la base n'en accepte qu'une par chantier et par
+    /// mois. Pour changer de mois, supprimez celle-ci et créez la bonne.
     /// </summary>
     [Authorize(Roles = "Administrateur")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ModifierMontant(long id, decimal montantPrevu, CancellationToken ct)
+    [HttpGet]
+    public async Task<IActionResult> Edit(long id, CancellationToken ct)
     {
-        var m = await _uow.PrevisionsMensuelles.GetByIdAsync(id, ct);
+        var m = await _uow.PrevisionsMensuelles.Query()
+            .Include(x => x.Chantier)
+            .Include(x => x.Lignes)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
         if (m is null) return NotFound();
 
         if (m.MontantConsomme > 0)
         {
-            TempData["Error"] = $"Cette enveloppe a déjà financé {m.MontantConsomme:N0} Ar : son montant ne peut plus changer.";
+            TempData["Error"] =
+                $"Cette enveloppe a déjà financé {m.MontantConsomme:N0} Ar : elle n'est plus modifiable.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var chantier = await _uow.Chantiers.GetByIdAsync(m.ChantierId, ct);
+        ViewBag.BudgetProjet = chantier?.BudgetProjet ?? 0m;
+        ViewBag.DejaEngage   = await _service.TotalMoisEngagesAsync(m.ChantierId, m.Id, ct);
+        return View(m);
+    }
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(
+        long id, decimal montantPrevu, string? observation,
+        string[]? rubriques, decimal[]? montantsRubriques, CancellationToken ct)
+    {
+        var m = await _uow.PrevisionsMensuelles.Query()
+            .Include(x => x.Lignes)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (m is null) return NotFound();
+
+        if (m.MontantConsomme > 0)
+        {
+            TempData["Error"] = $"Cette enveloppe a déjà financé {m.MontantConsomme:N0} Ar : elle n'est plus modifiable.";
             return RedirectToAction(nameof(Details), new { id });
         }
         if (montantPrevu <= 0)
         {
             TempData["Error"] = "Le montant du mois doit être supérieur à zéro.";
-            return RedirectToAction(nameof(Details), new { id });
+            return RedirectToAction(nameof(Edit), new { id });
         }
 
         var chantier = await _uow.Chantiers.GetByIdAsync(m.ChantierId, ct);
@@ -186,15 +217,39 @@ public class PrevisionMensuelleController : Controller
             TempData["Error"] =
                 $"Budget projet dépassé : {dejaEngage:N0} Ar déjà répartis sur {chantier.BudgetProjet:N0} Ar. " +
                 $"Ce mois ne peut pas dépasser {(chantier.BudgetProjet - dejaEngage):N0} Ar.";
-            return RedirectToAction(nameof(Details), new { id });
+            return RedirectToAction(nameof(Edit), new { id });
         }
 
         var ancien = m.MontantPrevu;
         m.MontantPrevu = montantPrevu;
+        m.Observation  = observation;
         _uow.PrevisionsMensuelles.Update(m);
+
+        // La répartition est remplacée en bloc : plus simple et plus sûr que de tenter
+        // d'apparier ligne à ligne des rubriques que l'utilisateur peut renommer.
+        foreach (var ancienne in await _uow.PrevisionMensuelleLignes.Query()
+                     .Where(l => l.PrevisionMensuelleId == id).ToListAsync(ct))
+            _uow.PrevisionMensuelleLignes.Remove(ancienne);
+
+        if (rubriques is not null && montantsRubriques is not null)
+        {
+            for (var i = 0; i < rubriques.Length && i < montantsRubriques.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(rubriques[i]) || montantsRubriques[i] <= 0) continue;
+                await _uow.PrevisionMensuelleLignes.AddAsync(new PrevisionMensuelleLigne
+                {
+                    PrevisionMensuelleId = id,
+                    Rubrique = rubriques[i].Trim(),
+                    Montant  = montantsRubriques[i]
+                }, ct);
+            }
+        }
+
         await _uow.SaveChangesAsync(ct);
 
-        TempData["Success"] = $"Enveloppe de {m.Libelle} : {ancien:N0} Ar → {montantPrevu:N0} Ar.";
+        TempData["Success"] = ancien == montantPrevu
+            ? $"Répartition de {m.Libelle} mise à jour."
+            : $"Enveloppe de {m.Libelle} : {ancien:N0} Ar → {montantPrevu:N0} Ar, répartition mise à jour.";
         return RedirectToAction(nameof(Details), new { id });
     }
 
