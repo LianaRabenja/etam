@@ -282,6 +282,13 @@ public class MateriauxController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(Materiau model, CancellationToken ct)
     {
+        // Materiau.Chantier est une navigation NON nullable (« = null! »). ASP.NET la
+        // considère donc comme obligatoire, alors que le formulaire n'envoie que
+        // ChantierId. Résultat : ModelState était TOUJOURS invalide, la vue était
+        // renvoyée telle quelle, et comme elle n'affichait aucune erreur, le
+        // formulaire semblait ne rien faire. On écarte la navigation de la validation.
+        ModelState.Remove(nameof(Materiau.Chantier));
+
         if (!ModelState.IsValid)
         {
             ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);

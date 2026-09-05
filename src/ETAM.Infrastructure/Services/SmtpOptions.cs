@@ -9,7 +9,7 @@ public class SmtpOptions
     public string User { get; set; } = "";
     public string Password { get; set; } = "";
     public string FromEmail { get; set; } = "no-reply@etam.mg";
-    public string FromName { get; set; } = "ETAM ERP";
+    public string FromName { get; set; } = "ETAM";
     /// <summary>Si vrai, l'email est écrit dans les logs au lieu d'être envoyé (dev).</summary>
     public bool Simulation { get; set; } = true;
 }

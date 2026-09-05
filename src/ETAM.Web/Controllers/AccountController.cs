@@ -86,7 +86,7 @@ public class AccountController : Controller
 <p>Vous avez demandé la réinitialisation de votre mot de passe ETAM ERP.</p>
 <p><a href='{lien}'>Cliquez ici pour définir un nouveau mot de passe</a></p>
 <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
-<p>— ETAM ERP</p>";
+<p>— ETAM</p>";
 
             await _email.EnvoyerAsync(user.Email!, "Réinitialisation de votre mot de passe ETAM", corps);
         }

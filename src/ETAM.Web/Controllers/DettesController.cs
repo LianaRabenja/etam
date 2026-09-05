@@ -42,6 +42,13 @@ public class DettesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(DetteFournisseur model, CancellationToken ct)
     {
+        // Même piège que pour les matériaux : DetteFournisseur.Fournisseur est une
+        // navigation non nullable, donc réputée obligatoire par la validation, alors
+        // que le formulaire n'envoie que FournisseurId. Sans ces deux lignes, aucune
+        // dette ne pouvait être enregistrée — en silence.
+        ModelState.Remove(nameof(DetteFournisseur.Fournisseur));
+        ModelState.Remove(nameof(DetteFournisseur.Chantier));
+
         if (!ModelState.IsValid)
         {
             ViewBag.Fournisseurs = await _uow.Fournisseurs.ListAllAsync(ct);

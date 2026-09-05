@@ -2,6 +2,12 @@
 @{ ViewData["Title"] = "Nouveau matériau"; var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>; }
 <div class="etam-card p-4" style="max-width:760px">
 <form asp-action="Create" method="post">
+    @* Sans ce bloc, un formulaire refusé par la validation revenait muet :
+       l'utilisateur ne voyait aucune explication et croyait que rien ne se passait. *@
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div asp-validation-summary="All" class="alert alert-danger py-2 small"></div>
+    }
     <div class="row g-3">
         <div class="col-md-6"><label class="form-label">Chantier</label>
             <select asp-for="ChantierId" class="form-select" required>
