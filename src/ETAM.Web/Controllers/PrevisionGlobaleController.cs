@@ -295,21 +295,25 @@ public class PrevisionGlobaleController : Controller
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        var compte = (await _uow.ComptesBancaires.ListAsync(
-            c => c.ChantierId == prev.ChantierId && c.Type == TypeCompteBancaire.Chantier, ct)).FirstOrDefault();
-        if (compte is null)
-        {
-            TempData["Error"] = "Aucun compte bancaire rattaché à ce chantier. Créez-le d'abord.";
-            return RedirectToAction(nameof(Details), new { id });
-        }
-
-        // L'argent du marché est déjà en banque (déposé à la création du chantier) :
-        // on ne redépose pas, on vérifie simplement que le solde couvre la prévision,
-        // puis on active la prévision globale (elle devient le budget de référence).
+        // Le plan du projet est une RÉFÉRENCE DE DÉPENSE, pas un dépôt d'argent.
+        // Il dit comment le budget alloué au chantier sera réparti ; il ne suppose
+        // pas que cette somme soit déjà encaissée. Sur un marché payé par acomptes,
+        // l'argent arrive au fil des mois : exiger que le compte couvre tout le plan
+        // bloquait l'activation sans raison, et bloquait donc tout le chantier.
+        //
+        // Le seul vrai plafond ici, c'est le budget alloué au chantier
+        // (BudgetProjet = montant du marché − bénéfice). La trésorerie, elle,
+        // est contrôlée au moment du retrait, à l'exécution d'une prévision
+        // journalière (PrevisionService), là où l'argent sort réellement.
         var total = prev.Total;
-        if (compte.Solde < total)
+        var chantier = prev.Chantier;
+
+        if (chantier is not null && chantier.BudgetProjet > 0 && total > chantier.BudgetProjet)
         {
-            TempData["Error"] = $"Solde bancaire insuffisant : {compte.Solde:N0} Ar disponibles pour une prévision de {total:N0} Ar.";
+            TempData["Error"] =
+                $"Ce plan répartit {total:N0} Ar alors que le budget alloué à {chantier.Nom} " +
+                $"est de {chantier.BudgetProjet:N0} Ar. Ajustez les lignes du plan, " +
+                "ou le budget du chantier s'il a changé.";
             return RedirectToAction(nameof(Details), new { id });
         }
 
@@ -318,7 +322,17 @@ public class PrevisionGlobaleController : Controller
         _uow.PrevisionsGlobales.Update(prev);
 
         await _uow.SaveChangesAsync(ct);
-        TempData["Success"] = $"Prévision globale activée. Budget de référence : {total:N0} Ar, couvert par le compte {compte.Nom} ({compte.Solde:N0} Ar).";
+
+        // Le compte n'est plus un verrou : on le cite pour information, et on
+        // rappelle qu'il faudra l'ouvrir avant d'exécuter la première prévision.
+        var compte = (await _uow.ComptesBancaires.ListAsync(
+            c => c.ChantierId == prev.ChantierId && c.Type == TypeCompteBancaire.Chantier, ct)).FirstOrDefault();
+
+        TempData["Success"] = compte is null
+            ? $"Plan du projet activé. Budget de référence : {total:N0} Ar. " +
+              "Créez le compte bancaire du chantier avant d'exécuter la première prévision journalière."
+            : $"Plan du projet activé. Budget de référence : {total:N0} Ar. " +
+              $"À ce jour, {compte.Nom} porte {compte.Solde:N0} Ar encaissés ; le reste arrivera au fil du marché.";
         return RedirectToAction(nameof(Details), new { id });
     }
 }

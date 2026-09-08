@@ -64,7 +64,7 @@
 }
 @if (Model.Statut == StatutPrevisionGlobale.MiseEnBanque)
 {
-    <div class="alert alert-success"><i class="fa-solid fa-circle-check me-1"></i> Montant mis en banque le @Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yyyy"). Transférez ensuite vers le Budget Matériel via le menu Banques.</div>
+    <div class="alert alert-success"><i class="fa-solid fa-circle-check me-1"></i> Plan activé le @Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yyyy") : il sert désormais de budget de référence pour les enveloppes mensuelles et les prévisions journalières. Aucun argent n'a bougé — la banque n'est débitée qu'aux retraits.</div>
 }
 
 <!-- Suivi du circuit de validation -->
@@ -73,7 +73,7 @@
         <div class="col"><div class="text-muted">Soumise par</div><div class="fw-semibold">@(Model.SoumisePar ?? "—")</div><div class="text-muted">@(Model.DateSoumission?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
         <div class="col"><div class="text-muted">Validée RF</div><div class="fw-semibold">@(Model.ValideeParRfId ?? "—")</div><div class="text-muted">@(Model.DateValidationRf?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
         <div class="col"><div class="text-muted">Validée Admin</div><div class="fw-semibold">@(Model.ValideeParAdminId ?? "—")</div><div class="text-muted">@(Model.DateValidationAdmin?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
-        <div class="col"><div class="text-muted">Mise en banque</div><div class="fw-semibold">@(Model.Statut == StatutPrevisionGlobale.MiseEnBanque ? "Oui" : "—")</div><div class="text-muted">@(Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
+        <div class="col"><div class="text-muted">Plan activé</div><div class="fw-semibold">@(Model.Statut == StatutPrevisionGlobale.MiseEnBanque ? "Oui" : "—")</div><div class="text-muted">@(Model.DateMiseEnBanque?.ToLocalTime().ToString("dd/MM/yy") ?? "")</div></div>
     </div>
 </div>
 

@@ -37,9 +37,12 @@
 <div class="row g-4">
     <div class="col-lg-8">
         <div class="etam-card p-4">
-            <div class="d-flex justify-content-between">
-                <h5 class="fw-bold">@Model.Reference</h5>
-                <div>
+            @* Titre a gauche, actions a droite. Le groupe d'export est un bloc
+               (btn-group) : sans conteneur flex il partait seul a la ligne et
+               desalignait les autres boutons des qu'on en ajoutait un. *@
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                <h5 class="fw-bold mb-0">@Model.Reference</h5>
+                <div class="d-flex align-items-center flex-wrap gap-2 justify-content-end">
                     @* L'Administrateur peut revenir sur une journée tant qu'aucun argent
                        n'a été distribué, même si elle est déjà validée ou exécutée. *@
                     @{
@@ -52,14 +55,22 @@
                     }
                     @if (User.IsInRole("Administrateur") && Model.ReversibleParAdministrateur)
                     {
+                        @* Le message est construit ici, pas dans l'attribut : une apostrophe
+                           (« L'argent ») refermait la chaîne JavaScript et cassait le script. *@
+                        var avertissement = Model.Statut == ETAM.Domain.Enums.StatutPrevision.Executee
+                            ? " Le montant retiré sera recrédité sur le compte bancaire."
+                            : "";
+                        var messageSuppression = $"Supprimer la prévision {Model.Reference} ?{avertissement}";
+
                         <form asp-action="Supprimer" asp-route-id="@Model.Id" method="post" class="d-inline"
-                              onsubmit="return confirm('Supprimer la prévision @Model.Reference ? @(Model.Statut == ETAM.Domain.Enums.StatutPrevision.Executee ? "L'argent retiré sera recrédité sur le compte bancaire." : "")');">
+                              data-confirm="@messageSuppression"
+                              onsubmit="return confirm(this.dataset.confirm);">
                             @Html.AntiForgeryToken()
                             <button class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-trash me-1"></i> Supprimer</button>
                         </form>
                     }
                     <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Prevision", "ExportDetail", Model.Id)' />
-                    <span class="badge bg-secondary align-self-start">@LibelleStatut(Model.Statut)</span>
+                    <span class="badge bg-secondary">@LibelleStatut(Model.Statut)</span>
                 </div>
             </div>
             <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>

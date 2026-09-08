@@ -32,6 +32,28 @@ public class AlerteService : IAlerteService
         => await _context.Alertes.Where(a => !a.EstLue)
             .OrderByDescending(a => a.CreatedAt).Take(50).ToListAsync(ct);
 
+    /// <summary>
+    /// Paliers d'alerte communs à toutes les enveloppes de l'ERP.
+    ///
+    /// On prévient à la moitié, puis on resserre à 80 % et à 90 %, juste avant
+    /// le dépassement : entre 50 % et 100 % il ne se passait rien, et une
+    /// enveloppe pouvait se vider sans qu'aucun signal ne le dise.
+    ///
+    /// Renvoie le palier le plus haut franchi (90, 80, 50), ou 0 si aucun.
+    /// Le palier — et non le pourcentage vivant — est ce qui doit figurer dans
+    /// le TITRE de l'alerte : CreerAsync dédoublonne sur le titre, donc un titre
+    /// qui contiendrait « 63 % » créerait une alerte de plus à chaque heure,
+    /// alors qu'un titre par palier en crée exactement une par seuil franchi.
+    /// </summary>
+    private static int PalierFranchi(double pourcentage) =>
+        pourcentage >= 90 ? 90 :
+        pourcentage >= 80 ? 80 :
+        pourcentage >= 50 ? 50 : 0;
+
+    /// <summary>À 90 % d'une enveloppe, un simple avertissement ne suffit plus.</summary>
+    private static NiveauAlerte NiveauDuPalier(int palier) =>
+        palier >= 90 ? NiveauAlerte.Critique : NiveauAlerte.Avertissement;
+
     public async Task EvaluerAlertesAsync(CancellationToken ct = default)
     {
         // Seuil budget faible : 15% restant (paramétrable via Parametres).
@@ -94,9 +116,10 @@ public class AlerteService : IAlerteService
     }
 
     /// <summary>
-    /// Alerte dès que 50 % d'une enveloppe prévue est consommé, et alerte de dépassement
-    /// au-delà de 100 %. Couvre : le budget projet du chantier, chaque rubrique de la
-    /// prévision globale et chaque ligne prévue (ciment, main d'œuvre, etc.).
+    /// Alerte aux paliers 50 %, 80 % et 90 % d'une enveloppe prévue, et alerte de
+    /// dépassement au-delà de 100 %. Couvre : le budget projet du chantier, chaque
+    /// rubrique de la prévision globale, chaque ligne prévue (ciment, main d'œuvre...),
+    /// le Budget Matériel, le Budget Comptes, l'enveloppe du mois et la journée en cours.
     /// </summary>
     private async Task EvaluerSeuils50Async(CancellationToken ct)
     {
@@ -125,7 +148,7 @@ public class AlerteService : IAlerteService
                 .Select(grp => new { LigneId = grp.Key, Total = grp.Sum(x => x.Quantite * x.PrixUnitaireEstime) })
                 .ToDictionaryAsync(x => x.LigneId, x => x.Total, ct);
 
-            // --- 1) Par ligne prévue (ex : Ciment 2 100 000) ---
+            // --- 1) Par ligne prévue du plan (ex : Ciment 2 100 000) ---
             foreach (var l in g.Lignes)
             {
                 var prevu = l.Total;
@@ -138,9 +161,9 @@ public class AlerteService : IAlerteService
                         $"Dépassement - {l.Designation} ({nomChantier})",
                         $"{l.Rubrique} / {l.Designation} : {consomme:N0} Ar dépensés sur {prevu:N0} Ar prévus ({pct:N0} %).",
                         g.ChantierId, ct);
-                else if (pct >= 50)
-                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                        $"50 % atteint - {l.Designation} ({nomChantier})",
+                else if (PalierFranchi(pct) is var palier && palier > 0)
+                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palier),
+                        $"{palier} % atteint - {l.Designation} ({nomChantier})",
                         $"{l.Rubrique} / {l.Designation} : {consomme:N0} Ar dépensés sur {prevu:N0} Ar prévus ({pct:N0} %). Reste {prevu - consomme:N0} Ar.",
                         g.ChantierId, ct);
             }
@@ -158,9 +181,9 @@ public class AlerteService : IAlerteService
                         $"Rubrique dépassée - {rub.Key} ({nomChantier})",
                         $"Rubrique {rub.Key} : {consommeRub:N0} Ar dépensés sur {prevuRub:N0} Ar prévus ({pctRub:N0} %).",
                         g.ChantierId, ct);
-                else if (pctRub >= 50)
-                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                        $"Rubrique à 50 % - {rub.Key} ({nomChantier})",
+                else if (PalierFranchi(pctRub) is var palierRub && palierRub > 0)
+                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierRub),
+                        $"Rubrique à {palierRub} % - {rub.Key} ({nomChantier})",
                         $"Rubrique {rub.Key} : {consommeRub:N0} Ar dépensés sur {prevuRub:N0} Ar prévus ({pctRub:N0} %). Reste {prevuRub - consommeRub:N0} Ar.",
                         g.ChantierId, ct);
             }
@@ -177,34 +200,34 @@ public class AlerteService : IAlerteService
                         $"Budget projet dépassé - {nomChantier}",
                         $"{consommeTotal:N0} Ar dépensés sur {prevuTotal:N0} Ar prévus ({pctTotal:N0} %).",
                         g.ChantierId, ct);
-                else if (pctTotal >= 50)
-                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                        $"Budget projet à 50 % - {nomChantier}",
+                else if (PalierFranchi(pctTotal) is var palierTotal && palierTotal > 0)
+                    await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierTotal),
+                        $"Budget projet à {palierTotal} % - {nomChantier}",
                         $"{consommeTotal:N0} Ar dépensés sur {prevuTotal:N0} Ar prévus ({pctTotal:N0} %). Reste {prevuTotal - consommeTotal:N0} Ar.",
                         g.ChantierId, ct);
             }
         }
 
-        // --- 4) Budget Matériel de chaque chantier à 50 % ---
+        // --- 4) Budget Matériel de chaque chantier (paliers 50 / 80 / 90 %) ---
         foreach (var c in await _context.Chantiers.ToListAsync(ct))
         {
-            if (c.BudgetMateriel > 0 && c.PourcentageConsomme >= 50 && c.PourcentageConsomme < 85)
-                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                    $"Budget Matériel à 50 % - {c.Nom}",
+            if (c.BudgetMateriel > 0 && PalierFranchi(c.PourcentageConsomme) is var palierMat && palierMat > 0)
+                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierMat),
+                    $"Budget Matériel à {palierMat} % - {c.Nom}",
                     $"{c.Consommation:N0} Ar consommés sur {c.BudgetMateriel:N0} Ar ({c.PourcentageConsomme:N0} %). Reste {c.BudgetMaterielRestant:N0} Ar.",
                     c.Id, ct);
         }
 
-        // --- 5) Budget Comptes annuel à 50 % ---
+        // --- 5) Budget Comptes annuel (paliers 50 / 80 / 90 %) ---
         var bc = await _context.BudgetsComptes.Where(b => b.EstActif)
             .OrderByDescending(b => b.Annee).FirstOrDefaultAsync(ct);
-        if (bc is not null && bc.PourcentageConsomme >= 50 && bc.PourcentageConsomme < 85)
-            await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                $"Budget Comptes à 50 % ({bc.Annee})",
+        if (bc is not null && PalierFranchi(bc.PourcentageConsomme) is var palierBc && palierBc > 0)
+            await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierBc),
+                $"Budget Comptes à {palierBc} % ({bc.Annee})",
                 $"{bc.MontantConsomme:N0} Ar consommés ({bc.PourcentageConsomme:N0} %). Reste {bc.MontantRestant:N0} Ar.",
                 null, ct);
 
-        // --- 6) Enveloppe mensuelle ouverte à 50 % ---
+        // --- 6) Enveloppe mensuelle ouverte (paliers 50 / 80 / 90 %) ---
         //     Le niveau qui manquait : on savait alerter sur le budget du projet et sur
         //     le Budget Matériel, mais pas sur le mois en cours — alors que c'est lui
         //     qui se vide le plus vite.
@@ -225,15 +248,15 @@ public class AlerteService : IAlerteService
                     $"(dont {m.ReportMoisPrecedent:N0} Ar reportés). Dépassement de " +
                     $"{(m.MontantConsomme - m.EnveloppeTotale):N0} Ar.",
                     m.ChantierId, ct);
-            else if (m.PourcentageConsomme >= 50)
-                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                    $"Enveloppe du mois à {m.PourcentageConsomme:N0} % - {m.Libelle} ({nom})",
+            else if (PalierFranchi(m.PourcentageConsomme) is var palierMois && palierMois > 0)
+                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierMois),
+                    $"Enveloppe du mois à {palierMois} % - {m.Libelle} ({nom})",
                     $"{m.MontantConsomme:N0} Ar décaissés sur {m.EnveloppeTotale:N0} Ar. " +
                     $"Reste {m.Disponible:N0} Ar pour finir le mois.",
                     m.ChantierId, ct);
         }
 
-        // --- 7) Prévision journalière ouverte à 50 % ---
+        // --- 7) Prévision journalière ouverte (paliers 50 / 80 / 90 %) ---
         //     L'argent est déjà sorti de la banque : ce qui compte ici est la part
         //     réellement distribuée par le chef, et ce qu'il lui reste en main.
         var joursOuverts = await _context.Previsions
@@ -253,9 +276,9 @@ public class AlerteService : IAlerteService
                     $"{p.MontantDecaisse:N0} Ar sortis sur un plafond de {p.PlafondDuJour:N0} Ar " +
                     $"le {p.DatePrevision:dd/MM/yyyy} ({nom}).",
                     p.ChantierId, ct);
-            else if (p.PourcentageDecaisse >= 50)
-                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
-                    $"Prévision du jour à {p.PourcentageDecaisse:N0} % - {p.Reference}",
+            else if (PalierFranchi(p.PourcentageDecaisse) is var palierJour && palierJour > 0)
+                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauDuPalier(palierJour),
+                    $"Prévision du jour à {palierJour} % - {p.Reference}",
                     $"{p.MontantDecaisse:N0} Ar distribués sur {p.PlafondDuJour:N0} Ar " +
                     $"le {p.DatePrevision:dd/MM/yyyy} ({nom}). Reste {p.Reliquat:N0} Ar en main.",
                     p.ChantierId, ct);

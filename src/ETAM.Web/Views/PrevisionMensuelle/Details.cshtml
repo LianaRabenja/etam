@@ -114,7 +114,8 @@
             </a>
 
             <form asp-action="Supprimer" asp-route-id="@Model.Id" method="post"
-                  onsubmit="return confirm('Supprimer l\'enveloppe de @Model.Libelle ? Ses @Model.MontantPrevu.ToString("N0") Ar redeviendront disponibles pour les autres mois.');">
+                  data-confirm="Supprimer l'enveloppe de @Model.Libelle ? Ses @Model.MontantPrevu.ToString("N0") Ar redeviendront disponibles pour les autres mois."
+                  onsubmit="return confirm(this.dataset.confirm);">
                 @Html.AntiForgeryToken()
                 <button class="btn btn-outline-danger text-nowrap">
                     <i class="fa-solid fa-trash me-1"></i> Supprimer l'enveloppe

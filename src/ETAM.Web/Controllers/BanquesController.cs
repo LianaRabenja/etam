@@ -185,7 +185,16 @@ public class BanquesController : Controller
     private async Task EnregistrerDemandeTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (montant <= 0) { TempData["Error"] = "Le montant doit être positif."; return; }
-        if (montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant sur le compte ({compte.Solde:N0} Ar)."; return; }
+
+        // Le fléchage vers le Budget Matériel ne sort pas d'argent : on peut réserver
+        // au titre du marché plus que ce qui est encaissé à cet instant. La trésorerie
+        // est contrôlée au vrai moment du retrait, à l'exécution d'une prévision.
+        // Le transfert vers le Budget Comptes, lui, débite : la contrainte y reste.
+        if (compte.Type != TypeCompteBancaire.Chantier && montant > compte.Solde)
+        {
+            TempData["Error"] = $"Solde insuffisant sur le compte ({compte.Solde:N0} Ar).";
+            return;
+        }
 
         var estAdmin = User.IsInRole("Administrateur");
         var cibleNom = compte.Type == TypeCompteBancaire.Comptes
@@ -197,7 +206,11 @@ public class BanquesController : Controller
             CompteBancaireId = compte.Id,
             Type = TypeMouvementBancaire.Virement,
             Montant = montant,
-            Motif = $"Transfert vers {cibleNom}",
+            // Pour un chantier, cette ligne trace un fléchage : elle ne bouge pas le solde.
+            // Sans la mention, on lirait un virement de 400 M en face d'un solde inchangé.
+            Motif = compte.Type == TypeCompteBancaire.Chantier
+                ? $"Fléchage vers {cibleNom} (aucun mouvement de fonds)"
+                : $"Transfert vers {cibleNom}",
             ChantierId = compte.ChantierId,
             Date = DateTime.UtcNow,
             EstValide = estAdmin,
@@ -207,7 +220,10 @@ public class BanquesController : Controller
         if (estAdmin)
         {
             await AppliquerTransfertAsync(compte, montant, ct);
-            TempData["Success"] = $"{montant:N0} Ar transférés vers le {cibleNom}. Le budget réel a augmenté d'autant.";
+            TempData["Success"] = compte.Type == TypeCompteBancaire.Chantier
+                ? $"{montant:N0} Ar fléchés vers le {cibleNom}. Le budget réel a augmenté d'autant ; " +
+                  "le solde bancaire ne bougera qu'aux retraits, à l'exécution des prévisions journalières."
+                : $"{montant:N0} Ar transférés vers le {cibleNom}. Le budget réel a augmenté d'autant.";
         }
         else
         {
@@ -225,7 +241,8 @@ public class BanquesController : Controller
         if (mvt is null || mvt.EstValide) { TempData["Error"] = "Demande introuvable ou déjà validée."; return RedirectToAction(nameof(Index)); }
         var compte = await _uow.ComptesBancaires.GetByIdAsync(mvt.CompteBancaireId, ct);
         if (compte is null) return NotFound();
-        if (mvt.Montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant ({compte.Solde:N0} Ar)."; return RedirectToAction(nameof(Index)); }
+        if (compte.Type != TypeCompteBancaire.Chantier && mvt.Montant > compte.Solde)
+        { TempData["Error"] = $"Solde insuffisant ({compte.Solde:N0} Ar)."; return RedirectToAction(nameof(Index)); }
 
         await AppliquerTransfertAsync(compte, mvt.Montant, ct);
         mvt.EstValide = true;
@@ -250,7 +267,25 @@ public class BanquesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // Applique le transfert : débite la banque et alimente le budget réel correspondant.
+    /// <summary>
+    /// Applique le transfert : alimente le budget réel correspondant.
+    ///
+    /// CAS D'UN CHANTIER — la banque n'est PAS débitée ici.
+    /// Flécher de l'argent vers le Budget Matériel est une décision comptable
+    /// (« sur ce que j'ai encaissé, je réserve tant pour les travaux »), pas un
+    /// passage au guichet. L'argent quitte réellement le compte à l'exécution
+    /// d'une prévision journalière, quand le chef va chercher les fonds
+    /// (PrevisionService, « L'ARGENT SORT ICI »).
+    ///
+    /// Débiter aux deux endroits faisait sortir deux fois la même somme : un
+    /// fléchage de 400 M suivi de 400 M de prévisions vidait le compte de 800 M,
+    /// et bloquait le chantier en cours de mois sur un « solde insuffisant »
+    /// alors que l'argent était bien en banque.
+    ///
+    /// CAS DU BUDGET COMPTES — la banque est débitée, elle.
+    /// Ses dépenses ne repassent jamais par un retrait : si son transfert ne
+    /// débitait pas non plus, son solde ne baisserait jamais.
+    /// </summary>
     private async Task AppliquerTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (compte.Type == TypeCompteBancaire.Comptes)
@@ -258,13 +293,15 @@ public class BanquesController : Controller
             var budget = (await _uow.BudgetsComptes.ListAsync(bg => bg.EstActif, ct))
                 .OrderByDescending(bg => bg.Annee).FirstOrDefault();
             if (budget is not null) { budget.MontantTransfere += montant; _uow.BudgetsComptes.Update(budget); }
+
+            compte.Solde -= montant;
+            _uow.ComptesBancaires.Update(compte);
         }
         else if (compte.ChantierId.HasValue)
         {
             var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
             if (chantier is not null) { chantier.MaterielTransfere += montant; _uow.Chantiers.Update(chantier); }
+            // Aucun mouvement de fonds : voir le commentaire ci-dessus.
         }
-        compte.Solde -= montant;
-        _uow.ComptesBancaires.Update(compte);
     }
 }
