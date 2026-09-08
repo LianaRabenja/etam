@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+#  ETAM - environnement de TEST sur Render
+#
+#  Ce fichier est volontairement separe de render.yaml : c'est un second
+#  Blueprint, totalement independant. Les noms des ressources sont differents
+#  (etam-test / etam-db-test), donc Render ne peut pas les confondre avec la
+#  production et ne touchera jamais a etam-erp ni a etam-db.
+#
+#  Dans le tableau de bord Render :
+#     New > Blueprint > ce depot > Blueprint Path = render-test.yaml
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: etam-test
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt
+    healthCheckPath: /Account/Login
+    # La branche de test : le site de test suit cette branche, la production
+    # continue de suivre main. Change-la si tu prefres tester depuis main.
+    branch: test
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: RENDER
+        value: "true"
+      # Base de TEST, jamais celle de production.
+      - key: ETAM_CONNECTION
+        fromDatabase:
+          name: etam-db-test
+          property: connectionString
+      # Mots de passe propres au test, generes par Render.
+      # A lire dans Render > etam-test > Environment.
+      - key: ETAM_ADMIN_PASSWORD
+        generateValue: true
+      - key: ETAM_RF_PASSWORD
+        generateValue: true
+      - key: ETAM_CHEF_PASSWORD
+        generateValue: true
+      - key: ETAM_MAGASINIER_PASSWORD
+        generateValue: true
+
+databases:
+  - name: etam-db-test
+    databaseName: etam_erp_test
+    user: etam
+    plan: free
+    region: frankfurt
