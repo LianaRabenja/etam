@@ -1,0 +1,62 @@
+@model ETAM.Domain.Entities.PrevisionJournaliere
+@using ETAM.Domain.Enums
+@*
+    Une seule phrase : ce qu'il faut faire maintenant, et par qui.
+    Volontairement dépouillé — l'utilisateur n'a besoin que de la prochaine action.
+*@
+
+@{
+    var (aFaire, parQui, couleur) = Model.Statut switch
+    {
+        StatutPrevision.Brouillon =>
+            ("Envoyer la demande pour validation.", "celui qui l'a créée", "secondary"),
+
+        StatutPrevision.Soumise =>
+            ("Vérifier les montants et valider.", "la Finance", "info"),
+
+        StatutPrevision.ValideeResponsableFinancier =>
+            ("Donner l'accord définitif.", "la Direction", "info"),
+
+        StatutPrevision.ValideeAdministrateur =>
+            ("Exécuter : l'argent sortira de la banque.", "la Direction ou la Finance", "primary"),
+
+        StatutPrevision.Executee when !Model.EstAccuseeReception =>
+            ("Signer le reçu de l'argent remis.", "celui qui reçoit l'argent", "warning"),
+
+        StatutPrevision.Executee =>
+            ("Noter les sorties d'argent, puis écrire le compte rendu.", "le Chef de chantier", "success"),
+
+        StatutPrevision.RapportSoumis =>
+            ("Lire le compte rendu et réceptionner les travaux.", "la Direction", "info"),
+
+        StatutPrevision.Cloturee => ("", "", ""),
+        StatutPrevision.Refusee => ("Demande refusée.", "", "danger"),
+        _ => ("", "", "")
+    };
+}
+
+@if (!string.IsNullOrEmpty(aFaire))
+{
+    <div class="alert alert-@couleur py-2 px-3 mb-3">
+        <strong>À faire :</strong> @aFaire
+        @if (!string.IsNullOrEmpty(parQui))
+        {
+            <span class="opacity-75">— par @parQui</span>
+        }
+    </div>
+}
+
+@* Les feuilles à imprimer pour faire sortir l'argent à la banque. *@
+@if (Model.Statut != StatutPrevision.Brouillon && Model.Statut != StatutPrevision.Refusee)
+{
+    <div class="d-flex gap-2 mb-3">
+        <a class="btn btn-outline-success btn-sm"
+           href="@Url.Action("Commande", "Prevision", new { id = Model.Id, format = "excel" })">
+            <i class="fa-solid fa-file-excel me-1"></i> Commande Excel
+        </a>
+        <a class="btn btn-outline-danger btn-sm"
+           href="@Url.Action("Commande", "Prevision", new { id = Model.Id, format = "pdf" })">
+            <i class="fa-solid fa-file-pdf me-1"></i> Commande PDF
+        </a>
+    </div>
+}

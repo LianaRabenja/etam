@@ -1,0 +1,33 @@
+@model ETAM.Domain.Entities.CompteBancaire
+@{ ViewData["Title"] = "Nouveau compte bancaire"; var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>; }
+<div class="etam-card p-4" style="max-width:560px">
+<form asp-action="Create" method="post">
+    <div class="mb-3"><label class="form-label">Type de compte</label>
+        <select asp-for="Type" class="form-select" id="typeSelect">
+            <option value="0">Compte de chantier</option>
+            <option value="1">Compte du Budget Comptes</option>
+        </select></div>
+    <div class="mb-3" id="chantierBlock"><label class="form-label">Chantier rattaché</label>
+        <select asp-for="ChantierId" class="form-select">
+            <option value="">-- choisir --</option>
+            @foreach (var c in chantiers ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>())
+            { <option value="@c.Id">@c.Nom (@c.Code)</option> }
+        </select></div>
+    <div class="mb-3"><label class="form-label">Banque</label><input asp-for="Banque" class="form-control" placeholder="BNI, BOA, BFV-SG..." required /></div>
+    <div class="mb-3"><label class="form-label">Libellé du compte</label><input asp-for="Nom" class="form-control" placeholder="Compte Ampirika" required /></div>
+    <div class="mb-3"><label class="form-label">Numéro de compte</label><input asp-for="Numero" class="form-control" /></div>
+    <div class="row">
+        <div class="col-8 mb-3"><label class="form-label">Solde initial (Ar)</label><input asp-for="Solde" type="number" step="0.01" class="form-control" /></div>
+        <div class="col-4 mb-3"><label class="form-label">Devise</label><input asp-for="Devise" class="form-control" /></div>
+    </div>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a asp-action="Index" class="btn btn-light">Annuler</a>
+</form>
+</div>
+@section Scripts {
+<script>
+  const ts = document.getElementById('typeSelect'), cb = document.getElementById('chantierBlock');
+  function toggle(){ cb.style.display = ts.value === '1' ? 'none' : 'block'; }
+  ts.addEventListener('change', toggle); toggle();
+</script>
+}

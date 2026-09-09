@@ -1,0 +1,64 @@
+@model List<ETAM.Domain.Entities.Approvisionnement>
+@{ ViewData["Title"] = "Approvisionnements"; }
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">@Model.Count bon(s) d'approvisionnement</p>
+    <div class="d-flex align-items-center">
+        @if (User.IsInRole("Administrateur") || User.IsInRole("Chef de chantier"))
+        {
+            <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouvel approvisionnement</a>
+        }
+        <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Approvisionnement", "ExportListe")' />
+    </div>
+</div>
+<div class="etam-card p-3">
+<table class="table table-hover align-middle datatable">
+    <thead><tr><th>Référence</th><th>Chantier</th><th>Date</th><th>Statut</th><th class="text-end">Total</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var a in Model)
+    {
+        var badge = a.Statut switch {
+            ETAM.Domain.Enums.StatutApprovisionnement.Valide => "bg-success",
+            ETAM.Domain.Enums.StatutApprovisionnement.Annule => "bg-secondary",
+            _ => "bg-warning text-dark" };
+        <tr>
+            <td class="fw-semibold"><a asp-action="Details" asp-route-id="@a.Id" class="text-decoration-none">@a.Reference</a></td>
+            <td>@a.Chantier?.Nom</td>
+            <td>@a.DateAppro.ToString("dd/MM/yyyy")</td>
+            <td><span class="badge @badge">@a.Statut</span></td>
+            <td class="text-end">@a.Total.ToString("N0") Ar</td>
+            <td class="text-end text-nowrap">
+                @if (a.Statut == ETAM.Domain.Enums.StatutApprovisionnement.Brouillon
+                     && (User.IsInRole("Administrateur") || User.IsInRole("Chef de chantier")))
+                {
+                    <a asp-action="Edit" asp-route-id="@a.Id" class="btn btn-sm btn-light"><i class="fa-solid fa-pen me-1"></i> Modifier</a>
+                }
+                @if (a.Statut == ETAM.Domain.Enums.StatutApprovisionnement.Brouillon
+                     && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+                {
+                    <a asp-action="Details" asp-route-id="@a.Id" class="btn btn-sm btn-outline-success"><i class="fa-solid fa-eye me-1"></i> Examiner / Valider</a>
+                }
+                else
+                {
+                    <a asp-action="Details" asp-route-id="@a.Id" class="btn btn-sm btn-light"><i class="fa-solid fa-eye me-1"></i> Détails</a>
+                }
+                @if (a.PrevisionJournaliereId != null)
+                {
+                    <a asp-controller="Prevision" asp-action="Details" asp-route-id="@a.PrevisionJournaliereId" class="btn btn-sm btn-light">Voir prévision</a>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>
+@section Scripts {
+<script>
+  document.querySelectorAll('.js-convert').forEach(f=>{
+    f.querySelector('button').addEventListener('click',()=>{
+      Swal.fire({title:'Valider cet approvisionnement ?',text:'Il sera converti en prévision et soumis pour validation.',
+        icon:'question',showCancelButton:true,confirmButtonText:'Valider',cancelButtonText:'Annuler',confirmButtonColor:'#059669'})
+        .then(r=>{ if(r.isConfirmed) f.submit(); });
+    });
+  });
+</script>
+}

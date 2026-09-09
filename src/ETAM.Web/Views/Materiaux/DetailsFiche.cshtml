@@ -1,0 +1,65 @@
+@model ETAM.Domain.Entities.Materiau
+@{
+    ViewData["Title"] = $"Fiche — {Model.Designation}";
+    var mouvements = ViewBag.Mouvements as List<ETAM.Domain.Entities.MouvementMateriau> ?? new();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a asp-action="Fiche" class="btn btn-light btn-sm"><i class="fa-solid fa-arrow-left me-1"></i> Retour à la liste</a>
+    <div class="d-flex align-items-center">
+        <a asp-action="NouveauMouvement" asp-route-materiauxId="@Model.Id" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus me-1"></i> Ajouter des lignes</a>
+        <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Materiaux", "ExportFiche", Model.Id)' />
+    </div>
+</div>
+
+<div class="etam-card p-3 mb-3">
+    <h5 class="text-center fw-bold mb-3">FICHE DE GESTION DES MATÉRIAUX</h5>
+    <div class="row">
+        <div class="col-md-3"><small class="text-muted d-block">Article</small><span class="fw-semibold">@Model.Designation</span></div>
+        <div class="col-md-3"><small class="text-muted d-block">Localité</small>@(string.IsNullOrWhiteSpace(Model.Localite) ? Model.Chantier?.Nom : Model.Localite)</div>
+        <div class="col-md-2"><small class="text-muted d-block">Unité</small>@Model.Unite</div>
+        <div class="col-md-2"><small class="text-muted d-block">Besoin</small>@Model.Besoin.ToString("N0")</div>
+        <div class="col-md-2"><small class="text-muted d-block">Stock disponible</small><span class="fw-semibold">@Model.StockDisponible.ToString("N0") @Model.Unite</span></div>
+    </div>
+</div>
+
+<div class="etam-card p-3">
+<table class="table table-bordered align-middle small mb-0">
+    <thead class="table-light">
+        <tr>
+            <th style="width: 90px">Date</th>
+            <th class="text-end" style="width: 110px">Besoin ou objectif</th>
+            <th class="text-end" style="width: 80px">Entrée</th>
+            <th class="text-end" style="width: 80px">Sortie</th>
+            <th class="text-end" style="width: 110px">Solde sur besoin</th>
+            <th class="text-end" style="width: 110px">Solde en stock</th>
+            <th>Motif</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (mouvements.Any())
+    {
+        @foreach (var mv in mouvements)
+        {
+            <tr>
+                <td>@mv.DateMouvement.ToString("dd/MM/yy")</td>
+                <td class="text-end">@Model.Besoin.ToString("N0")</td>
+                <td class="text-end text-success">@(mv.QuantiteEntree > 0 ? mv.QuantiteEntree.ToString("N0") : "0")</td>
+                <td class="text-end text-danger">@(mv.QuantiteSortie > 0 ? mv.QuantiteSortie.ToString("N0") : "0")</td>
+                <td class="text-end">@mv.SoldeSurBesoin.ToString("N0")</td>
+                <td class="text-end fw-semibold">@mv.SoldeEnStock.ToString("N0")</td>
+                <td>@mv.Motif</td>
+            </tr>
+        }
+    }
+    else
+    {
+        <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+                <i class="fa-solid fa-inbox me-2"></i>Aucun mouvement pour cet article. Cliquez sur « Nouveau mouvement ».
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>

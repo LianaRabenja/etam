@@ -1,0 +1,13 @@
+@model ETAM.Domain.Entities.Fournisseur
+@{ ViewData["Title"] = "Nouveau fournisseur"; }
+<div class="etam-card p-4" style="max-width:560px">
+<form asp-action="Create" method="post">
+    <div class="mb-3"><label class="form-label">Nom</label><input asp-for="Nom" class="form-control" required /></div>
+    <div class="mb-3"><label class="form-label">Contact</label><input asp-for="Contact" class="form-control" /></div>
+    <div class="mb-3"><label class="form-label">Téléphone</label><input asp-for="Telephone" class="form-control" /></div>
+    <div class="mb-3"><label class="form-label">Adresse</label><input asp-for="Adresse" class="form-control" /></div>
+    <div class="mb-3"><label class="form-label">NIF</label><input asp-for="Nif" class="form-control" /></div>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a asp-action="Index" class="btn btn-light">Annuler</a>
+</form>
+</div>

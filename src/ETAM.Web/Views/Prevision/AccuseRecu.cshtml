@@ -1,0 +1,90 @@
+@model ETAM.Domain.Entities.PrevisionJournaliere
+@{
+    Layout = null;
+    var montant = Model.MontantAccuse ?? Model.PlafondDuJour;
+}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <title>Accusé de réception — @Model.Reference</title>
+    <style>
+        body { font-family: "Segoe UI", Arial, sans-serif; color:#1e293b; margin:0; padding:28mm 22mm; }
+        h1 { font-size:20pt; margin:0 0 2mm; letter-spacing:.5px; }
+        .sous { color:#64748b; font-size:10pt; margin-bottom:12mm; }
+        table { width:100%; border-collapse:collapse; margin-bottom:8mm; font-size:11pt; }
+        td { padding:3mm 2mm; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        td.cle { color:#64748b; width:45%; }
+        td.val { font-weight:600; text-align:right; }
+        .montant { background:#eff6ff; border-left:4px solid #2563eb; padding:6mm; margin:8mm 0; }
+        .montant .lib { font-size:10pt; color:#64748b; }
+        .montant .val { font-size:22pt; font-weight:700; color:#2563eb; }
+        .texte { font-size:11pt; line-height:1.7; margin:8mm 0; }
+        .signatures { display:flex; gap:20mm; margin-top:16mm; }
+        .signature { flex:1; }
+        .ligne { border-bottom:1px solid #94a3b8; height:18mm; margin-bottom:2mm; }
+        .label { font-size:9pt; color:#64748b; }
+        .pied { margin-top:16mm; font-size:8pt; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:3mm; }
+        .bouton { margin-bottom:8mm; }
+        @@media print { .bouton { display:none; } body { padding:14mm; } }
+    </style>
+</head>
+<body>
+
+<div class="bouton">
+    <button onclick="window.print()" style="padding:8px 16px;font-size:11pt;cursor:pointer">Imprimer</button>
+</div>
+
+<h1>ACCUSÉ DE RÉCEPTION DE FONDS</h1>
+<div class="sous">@Model.Reference &nbsp;·&nbsp; @Model.Chantier?.Nom</div>
+
+<table>
+    <tr><td class="cle">Chantier</td><td class="val">@Model.Chantier?.Nom (@Model.Chantier?.Code)</td></tr>
+    <tr><td class="cle">Date de la prévision</td><td class="val">@Model.DatePrevision.ToString("dd/MM/yyyy")</td></tr>
+    <tr><td class="cle">Montant demandé pour la journée</td><td class="val">@Model.Total.ToString("N0") Ar</td></tr>
+    <tr>
+        <td class="cle">Reliquat reporté de la journée précédente</td>
+        <td class="val">@(Model.ReportVeille > 0 ? "+ " + Model.ReportVeille.ToString("N0") + " Ar" : "néant")</td>
+    </tr>
+</table>
+
+<div class="montant">
+    <div class="lib">Montant total mis à disposition</div>
+    <div class="val">@montant.ToString("N0") Ar</div>
+</div>
+
+<div class="texte">
+    Je soussigné(e) <strong>@Model.AccuseNomSignataire</strong>, reconnais avoir reçu la somme
+    de <strong>@montant.ToString("N0") ariary</strong> au titre de la prévision
+    <strong>@Model.Reference</strong> du @Model.DatePrevision.ToString("dd/MM/yyyy"),
+    destinée aux travaux du chantier <strong>@Model.Chantier?.Nom</strong>.
+    <br /><br />
+    Je m'engage à rendre compte de l'utilisation de cette somme et à produire les
+    justificatifs des dépenses effectuées.
+</div>
+
+<table>
+    <tr>
+        <td class="cle">Réception enregistrée le</td>
+        <td class="val">@Model.DateAccuseReception?.ToString("dd/MM/yyyy à HH:mm")</td>
+    </tr>
+</table>
+
+<div class="signatures">
+    <div class="signature">
+        <div class="ligne"></div>
+        <div class="label">Le bénéficiaire — @Model.AccuseNomSignataire</div>
+    </div>
+    <div class="signature">
+        <div class="ligne"></div>
+        <div class="label">Pour la direction</div>
+    </div>
+</div>
+
+<div class="pied">
+    Document généré automatiquement le @DateTime.Now.ToString("dd/MM/yyyy à HH:mm").
+    Toute modification ultérieure de cette prévision est tracée dans le journal d'audit.
+</div>
+
+</body>
+</html>

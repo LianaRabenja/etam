@@ -1,0 +1,18 @@
+@{ ViewData["Title"] = "Dépôt sur le compte";
+   var compte = ViewBag.Compte as ETAM.Domain.Entities.CompteBancaire; }
+<div class="etam-card p-4" style="max-width:560px">
+<p class="text-muted">Ajouter de l'argent sur le compte <strong>@compte?.Banque — @compte?.Nom</strong> (solde actuel : @compte?.Solde.ToString("N0") Ar).</p>
+<form asp-action="Mouvement" method="post">
+    <input type="hidden" name="compteId" value="@compte?.Id" />
+    @* Un seul type d'opération de saisie : le dépôt (entrée d'argent). Le retrait se fait via le transfert vers un budget. *@
+    <input type="hidden" name="type" value="0" />
+    <div class="mb-3"><label class="form-label">Montant du dépôt (Ar)</label>
+        <input name="montant" type="number" step="0.01" min="0" class="form-control" required /></div>
+    <div class="mb-3"><label class="form-label">Motif / origine</label>
+        <input name="motif" class="form-control" placeholder="Encaissement décompte, apport..." /></div>
+    <div class="mb-3"><label class="form-label">Référence (option)</label>
+        <input name="reference" class="form-control" /></div>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Enregistrer le dépôt</button>
+    <a asp-action="Details" asp-route-id="@compte?.Id" class="btn btn-light">Annuler</a>
+</form>
+</div>

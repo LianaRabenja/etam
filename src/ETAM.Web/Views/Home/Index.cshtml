@@ -1,0 +1,116 @@
+@model ETAM.Application.DTOs.DashboardDto
+@{ ViewData["Title"] = "Tableau de bord"; }
+
+<div class="kpi-grid mb-4">
+    <div class="kpi">
+        <div class="kpi-icon bg-blue"><i class="fa-solid fa-wallet"></i></div>
+        <div class="kpi-label">Budget Comptes restant</div>
+        <div class="kpi-value">@Model.BudgetCompteRestant.ToString("N0") Ar</div>
+        <div class="etam-progress"><span style="width:@Model.BudgetCompteConsommePct%"></span></div>
+        <div class="kpi-sub">@Model.BudgetCompteConsommePct% consommé</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-green"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <div class="kpi-label">Budget Matériel restant</div>
+        <div class="kpi-value">@Model.BudgetMaterielRestant.ToString("N0") Ar</div>
+        <div class="etam-progress"><span style="width:@Model.BudgetMaterielConsommePct%"></span></div>
+        <div class="kpi-sub">@Model.BudgetMaterielConsommePct% consommé</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-amber"><i class="fa-solid fa-receipt"></i></div>
+        <div class="kpi-label">Dépenses du mois</div>
+        <div class="kpi-value">@Model.DepensesDuMois.ToString("N0") Ar</div>
+        <div class="kpi-sub">Mois en cours</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-violet"><i class="fa-solid fa-trowel-bricks"></i></div>
+        <div class="kpi-label">Valeur des matériaux</div>
+        <div class="kpi-value">@Model.ValeurTotaleMateriaux.ToString("N0") Ar</div>
+        <div class="kpi-sub">Stock restant valorisé</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-slate"><i class="fa-solid fa-helmet-safety"></i></div>
+        <div class="kpi-label">Chantiers</div>
+        <div class="kpi-value">@Model.NombreChantiers</div>
+        <div class="kpi-sub">Prévisions du jour : @Model.PrevisionsDuJour</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-red"><i class="fa-solid fa-bell"></i></div>
+        <div class="kpi-label">Alertes actives</div>
+        <div class="kpi-value">@Model.NombreAlertes</div>
+        <div class="kpi-sub">Validations en attente : @Model.ValidationsEnAttente</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-green"><i class="fa-solid fa-building-columns"></i></div>
+        <div class="kpi-label">Trésorerie (banques)</div>
+        <div class="kpi-value">@Model.TresorerieTotale.ToString("N0") Ar</div>
+        <div class="kpi-sub">Solde total des comptes</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-icon bg-amber"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+        <div class="kpi-label">Dettes fournisseurs</div>
+        <div class="kpi-value">@Model.TotalDettes.ToString("N0") Ar</div>
+        <div class="kpi-sub">Restant dû</div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="etam-card p-4 h-100">
+            <h6 class="fw-bold mb-3">Dépenses mensuelles</h6>
+            <canvas id="chartDepenses" height="120"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="etam-card p-4 h-100">
+            <h6 class="fw-bold mb-3">Consommation matériel par chantier</h6>
+            <canvas id="chartChantiers" height="150"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="etam-card p-4 h-100">
+            <h6 class="fw-bold mb-3">Top matériaux consommés</h6>
+            <canvas id="chartTopMat" height="140"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="etam-card p-4 h-100">
+            <h6 class="fw-bold mb-3">Budgets — consommation globale</h6>
+            <canvas id="chartBudgets" height="140"></canvas>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+  const fmt = v => new Intl.NumberFormat('fr-FR').format(v) + ' Ar';
+  new Chart(document.getElementById('chartDepenses'),{
+    type:'line',
+    data:{ labels:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MoisLabels)),
+      datasets:[{ label:'Dépenses', data:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.DepensesMensuelles)),
+        borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.12)', fill:true, tension:.35 }]},
+    options:{ plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:fmt}}} }
+  });
+  new Chart(document.getElementById('chartChantiers'),{
+    type:'bar',
+    data:{ labels:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ChantiersLabels)),
+      datasets:[{ data:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ConsommationParChantier)),
+        backgroundColor:'#0ea5e9', borderRadius:8 }]},
+    options:{ plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:fmt}}} }
+  });
+  new Chart(document.getElementById('chartTopMat'),{
+    type:'doughnut',
+    data:{ labels:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TopMateriauxLabels)),
+      datasets:[{ data:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TopMateriauxValeurs)),
+        backgroundColor:['#2563eb','#0ea5e9','#059669','#d97706','#7c3aed','#dc2626','#475569','#f59e0b'] }]},
+    options:{ plugins:{legend:{position:'right'}} }
+  });
+  new Chart(document.getElementById('chartBudgets'),{
+    type:'bar',
+    data:{ labels:['Budget Comptes','Budget Matériel'],
+      datasets:[{ label:'% consommé', data:[@Model.BudgetCompteConsommePct,@Model.BudgetMaterielConsommePct],
+        backgroundColor:['#2563eb','#059669'], borderRadius:8 }]},
+    options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{max:100,ticks:{callback:v=>v+'%'}}} }
+  });
+</script>
+}

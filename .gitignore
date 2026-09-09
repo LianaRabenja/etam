@@ -1,0 +1,15 @@
+bin/
+obj/
+logs/
+*.user
+.vs/
+.idea/
+
+# Secrets — ne jamais committer
+appsettings.*.local.json
+appsettings.Development.json
+*.env
+.env
+secrets.json
+*.pfx
+*.key
