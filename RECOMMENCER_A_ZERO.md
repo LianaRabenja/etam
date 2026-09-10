@@ -42,13 +42,34 @@ vous encombre plus.
 
 ### En local
 
-```
-psql "Host=localhost;Database=etam;Username=postgres;Password=root" -f scripts/nettoyer_chantiers.sql
+Deux façons, au choix.
+
+**a) Sans rien installer — par le logiciel lui-même.** Dans PowerShell, à la
+racine du projet :
+
+```powershell
+$env:ETAM_NETTOYER_CHANTIERS = "OUI-EFFACER"
+dotnet run --project src/ETAM.Web
 ```
 
-Adaptez la chaîne à votre configuration. Si `psql` n'est pas reconnu, ouvrez
-pgAdmin, sélectionnez la base, ouvrez l'outil de requête et collez le contenu
-du fichier `scripts/nettoyer_chantiers.sql`.
+Attendez la ligne `NETTOYAGE TERMINÉ` dans la console, arrêtez avec Ctrl+C,
+puis **retirez la variable** — sinon la base est vidée à chaque démarrage :
+
+```powershell
+Remove-Item Env:ETAM_NETTOYER_CHANTIERS
+```
+
+**b) Avec psql.** Attention : `psql` n'accepte pas une chaîne .NET, il lui faut
+une URL PostgreSQL. La base locale s'appelle `etam_erp` (voir
+`appsettings.Development.json`) :
+
+```powershell
+psql "postgresql://postgres:root@localhost:5432/etam_erp" -f scripts/nettoyer_chantiers.sql
+```
+
+Si `psql` n'est pas reconnu, ouvrez pgAdmin, sélectionnez la base `etam_erp`,
+ouvrez l'outil de requête et collez le contenu du fichier
+`scripts/nettoyer_chantiers.sql`.
 
 ### Sur Render
 

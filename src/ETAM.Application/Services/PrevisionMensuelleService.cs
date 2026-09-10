@@ -45,12 +45,40 @@ public class PrevisionMensuelleService : IPrevisionMensuelleService
         var chantier = await _uow.Chantiers.GetByIdAsync(chantierId, ct);
         if (chantier is null) return Result<long>.Failure("Chantier introuvable.");
 
-        var existe = await _uow.PrevisionsMensuelles.AnyAsync(
-            m => m.ChantierId == chantierId && m.Annee == annee && m.Mois == mois
-                 && m.Statut != StatutPrevisionMensuelle.Refusee, ct);
-        if (existe)
-            return Result<long>.Failure(
-                $"Une enveloppe existe déjà pour {PrevisionMensuelle.NomDuMois(mois)} {annee} sur ce chantier.");
+        // --- Une seule enveloppe par chantier et par mois ---
+        //
+        // La base impose un index unique sur (ChantierId, Annee, Mois), et cet index
+        // voit TOUTES les lignes : y compris celles qui sont refusées et celles qui
+        // sont supprimées en douceur (IsDeleted). L'application, elle, ne voyait ni
+        // les unes ni les autres — le filtre global masque les supprimées, et le test
+        // écartait les refusées.
+        //
+        // Résultat : un mois refusé ou supprimé bloquait définitivement sa recréation,
+        // avec une erreur 500 illisible au lieu d'un message. C'est le défaut corrigé ici.
+        //
+        // IgnoreQueryFilters() est indispensable : sans lui on ne verrait pas les lignes
+        // supprimées, donc pas celles qui provoquent justement le conflit.
+        var existante = await _uow.PrevisionsMensuelles.Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.ChantierId == chantierId
+                                   && m.Annee == annee
+                                   && m.Mois == mois, ct);
+
+        if (existante is not null)
+        {
+            var reutilisable = existante.IsDeleted
+                            || existante.Statut == StatutPrevisionMensuelle.Refusee;
+
+            if (!reutilisable)
+                return Result<long>.Failure(
+                    $"Une enveloppe existe déjà pour {PrevisionMensuelle.NomDuMois(mois)} {annee} " +
+                    $"sur ce chantier ({existante.Reference}, {existante.Statut}). " +
+                    "Ouvrez-la ou corrigez son montant plutôt que d'en créer une seconde.");
+
+            // Le mois avait été refusé ou supprimé : on ressuscite la ligne existante
+            // au lieu d'en insérer une seconde, qui violerait l'index unique.
+            return await ReactiverAsync(existante, chantier, montantPrevu, lignes, observation, ct);
+        }
 
         // Le total des mois ne peut pas dépasser le budget du projet.
         // Le report n'entre pas dans ce calcul : il a déjà été alloué le mois précédent.
@@ -130,6 +158,86 @@ public class PrevisionMensuelleService : IPrevisionMensuelleService
         return Result<long>.Success(enveloppe.Id);
     }
 
+    /// <summary>
+    /// Remet en service une enveloppe qui avait été refusée ou supprimée, au lieu d'en
+    /// insérer une seconde pour le même mois — ce que l'index unique de la base refuse.
+    /// L'utilisateur, lui, voit simplement son mois créé.
+    /// </summary>
+    private async Task<Result<long>> ReactiverAsync(
+        PrevisionMensuelle m, Chantier chantier, decimal montantPrevu,
+        IEnumerable<(string Rubrique, string? Designation, decimal Montant, long? PrevisionGlobaleLigneId)>? lignes,
+        string? observation, CancellationToken ct)
+    {
+        // Le plafond du budget projet s'applique aussi à une réactivation.
+        var dejaEngage = await TotalMoisEngagesAsync(chantier.Id, m.Id, ct);
+        if (dejaEngage + montantPrevu > chantier.BudgetProjet)
+            return Result<long>.Failure(
+                $"Budget projet dépassé : {dejaEngage:N0} Ar déjà répartis sur {chantier.BudgetProjet:N0} Ar. " +
+                $"Il reste {(chantier.BudgetProjet - dejaEngage):N0} Ar à répartir.");
+
+        // Reprise du reliquat du dernier mois clôturé, comme à la création.
+        var moisPrecedent = await _uow.PrevisionsMensuelles.Query().AsNoTracking()
+            .Where(x => x.ChantierId == chantier.Id
+                        && x.Id != m.Id
+                        && x.Statut == StatutPrevisionMensuelle.Cloturee
+                        && (x.Annee < m.Annee || (x.Annee == m.Annee && x.Mois < m.Mois)))
+            .OrderByDescending(x => x.Annee).ThenByDescending(x => x.Mois)
+            .FirstOrDefaultAsync(ct);
+
+        var report = 0m;
+        if (moisPrecedent is not null)
+        {
+            report = moisPrecedent.EnveloppeTotale - moisPrecedent.MontantConsomme;
+            if (report < 0) report = 0;
+        }
+
+        m.IsDeleted        = false;
+        m.Statut           = StatutPrevisionMensuelle.Brouillon;
+        m.MotifRefus       = null;
+        m.MontantPrevu     = montantPrevu;
+        m.MontantConsomme  = 0m;
+        m.ReportMoisPrecedent = report;
+        m.PrevisionMensuellePrecedenteId = moisPrecedent?.Id;
+        m.Observation      = observation;
+        m.SoumisePar       = _currentUser.UserName;
+        m.DateSoumission   = DateTime.UtcNow;
+        m.DateValidation   = null;
+        m.ValideeParId     = null;
+        m.DateCloture      = null;
+        m.ClotureeParId    = null;
+        m.Reference        = $"PMENS-{chantier.Code}-{m.Annee:D4}{m.Mois:D2}";
+
+        // Les anciennes lignes de répartition n'ont plus lieu d'être.
+        foreach (var ancienne in await _uow.PrevisionMensuelleLignes.Query()
+                     .IgnoreQueryFilters()
+                     .Where(l => l.PrevisionMensuelleId == m.Id).ToListAsync(ct))
+            _uow.PrevisionMensuelleLignes.Remove(ancienne);
+
+        if (lignes is not null)
+        {
+            foreach (var l in lignes.Where(l => l.Montant > 0))
+                await _uow.PrevisionMensuelleLignes.AddAsync(new PrevisionMensuelleLigne
+                {
+                    PrevisionMensuelleId = m.Id,
+                    Rubrique = l.Rubrique,
+                    Designation = l.Designation,
+                    Montant = l.Montant,
+                    PrevisionGlobaleLigneId = l.PrevisionGlobaleLigneId
+                }, ct);
+        }
+
+        _uow.PrevisionsMensuelles.Update(m);
+        await _uow.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(TypeActionAudit.Ajout, nameof(PrevisionMensuelle), m.Id.ToString(),
+            nouvelleValeur: $"{m.Reference} — reactivee, {montantPrevu:N0} Ar + report {report:N0} Ar", ct: ct);
+
+        _logger.LogInformation("Enveloppe {Ref} reactivee ({Montant} Ar, report {Report} Ar).",
+            m.Reference, montantPrevu, report);
+
+        return Result<long>.Success(m.Id);
+    }
+
     public async Task<Result> ValiderAsync(long id, CancellationToken ct = default)
     {
         var m = await _uow.PrevisionsMensuelles.GetByIdAsync(id, ct);
@@ -153,6 +261,15 @@ public class PrevisionMensuelleService : IPrevisionMensuelleService
         if (m is null) return Result.Failure("Enveloppe mensuelle introuvable.");
         if (m.Statut == StatutPrevisionMensuelle.Cloturee)
             return Result.Failure("Une enveloppe clôturée ne peut plus être refusée.");
+
+        // Une enveloppe ouverte peut être annulée tant qu'elle n'a rien financé :
+        // c'est le seul recours quand on s'est trompé de mois à la création, sinon
+        // son montant resterait à jamais décompté du budget du projet.
+        // Dès qu'un décaissement s'y rattache, elle devient un fait comptable.
+        if (m.MontantConsomme > 0)
+            return Result.Failure(
+                $"Cette enveloppe a déjà financé {m.MontantConsomme:N0} Ar de dépenses : " +
+                "elle ne peut plus être annulée. Clôturez-la, le reliquat sera reporté.");
 
         m.Statut = StatutPrevisionMensuelle.Refusee;
         m.MotifRefus = motif;

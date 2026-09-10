@@ -124,6 +124,13 @@ public class PrevisionJournaliere : BaseEntity
         || Statut == StatutPrevision.Soumise
         || Statut == StatutPrevision.ValideeResponsableFinancier;
 
+    /// <summary>
+    /// L'Administrateur peut revenir sur une prévision — la corriger ou la supprimer —
+    /// tant qu'aucun argent n'a été distribué. Une fois un décaissement enregistré,
+    /// la journée devient un fait comptable : on la clôture, on ne la réécrit pas.
+    /// </summary>
+    public bool ReversibleParAdministrateur => MontantDecaisse == 0;
+
     /// <summary>Prévision exécutée dont les travaux ne sont pas encore réceptionnés par l'Administrateur.
     /// Tant qu'il en existe une, aucune nouvelle prévision ne peut être créée pour ce chantier.</summary>
     public bool BloqueNouvellePrevision =>

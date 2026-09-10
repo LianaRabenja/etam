@@ -203,6 +203,63 @@ public class AlerteService : IAlerteService
                 $"Budget Comptes à 50 % ({bc.Annee})",
                 $"{bc.MontantConsomme:N0} Ar consommés ({bc.PourcentageConsomme:N0} %). Reste {bc.MontantRestant:N0} Ar.",
                 null, ct);
+
+        // --- 6) Enveloppe mensuelle ouverte à 50 % ---
+        //     Le niveau qui manquait : on savait alerter sur le budget du projet et sur
+        //     le Budget Matériel, mais pas sur le mois en cours — alors que c'est lui
+        //     qui se vide le plus vite.
+        var moisOuverts = await _context.PrevisionsMensuelles
+            .Include(m => m.Chantier)
+            .Where(m => m.Statut == StatutPrevisionMensuelle.Validee)
+            .ToListAsync(ct);
+
+        foreach (var m in moisOuverts)
+        {
+            if (m.EnveloppeTotale <= 0) continue;
+            var nom = m.Chantier?.Nom ?? "chantier";
+
+            if (m.MontantConsomme > m.EnveloppeTotale)
+                await CreerAsync(TypeAlerte.DepassementPrevision, NiveauAlerte.Critique,
+                    $"Enveloppe dépassée - {m.Libelle} ({nom})",
+                    $"{m.MontantConsomme:N0} Ar décaissés sur une enveloppe de {m.EnveloppeTotale:N0} Ar " +
+                    $"(dont {m.ReportMoisPrecedent:N0} Ar reportés). Dépassement de " +
+                    $"{(m.MontantConsomme - m.EnveloppeTotale):N0} Ar.",
+                    m.ChantierId, ct);
+            else if (m.PourcentageConsomme >= 50)
+                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
+                    $"Enveloppe du mois à {m.PourcentageConsomme:N0} % - {m.Libelle} ({nom})",
+                    $"{m.MontantConsomme:N0} Ar décaissés sur {m.EnveloppeTotale:N0} Ar. " +
+                    $"Reste {m.Disponible:N0} Ar pour finir le mois.",
+                    m.ChantierId, ct);
+        }
+
+        // --- 7) Prévision journalière ouverte à 50 % ---
+        //     L'argent est déjà sorti de la banque : ce qui compte ici est la part
+        //     réellement distribuée par le chef, et ce qu'il lui reste en main.
+        var joursOuverts = await _context.Previsions
+            .Include(p => p.Chantier).Include(p => p.Lignes)
+            .Where(p => p.Statut == StatutPrevision.Executee
+                     || p.Statut == StatutPrevision.RapportSoumis)
+            .ToListAsync(ct);
+
+        foreach (var p in joursOuverts)
+        {
+            if (p.PlafondDuJour <= 0) continue;
+            var nom = p.Chantier?.Nom ?? "chantier";
+
+            if (p.MontantDecaisse > p.PlafondDuJour)
+                await CreerAsync(TypeAlerte.DepassementPrevision, NiveauAlerte.Critique,
+                    $"Plafond du jour dépassé - {p.Reference}",
+                    $"{p.MontantDecaisse:N0} Ar sortis sur un plafond de {p.PlafondDuJour:N0} Ar " +
+                    $"le {p.DatePrevision:dd/MM/yyyy} ({nom}).",
+                    p.ChantierId, ct);
+            else if (p.PourcentageDecaisse >= 50)
+                await CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
+                    $"Prévision du jour à {p.PourcentageDecaisse:N0} % - {p.Reference}",
+                    $"{p.MontantDecaisse:N0} Ar distribués sur {p.PlafondDuJour:N0} Ar " +
+                    $"le {p.DatePrevision:dd/MM/yyyy} ({nom}). Reste {p.Reliquat:N0} Ar en main.",
+                    p.ChantierId, ct);
+        }
     }
 
     /// <summary>
