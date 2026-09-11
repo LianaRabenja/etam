@@ -64,8 +64,14 @@ public class RapportsPrevisionController : Controller
             .OrderByDescending(p => p.DatePrevision).ThenByDescending(p => p.Id)
             .Take(300).ToListAsync(ct);
 
-        ViewBag.Chantiers = await _uow.Chantiers.Query().AsNoTracking()
-            .OrderBy(c => c.Nom).ToListAsync(ct);
+        // Un utilisateur rattaché ne doit pas même voir le NOM des autres chantiers
+        // dans la liste déroulante : on ne lui charge que le sien.
+        var qChantiers = _uow.Chantiers.Query().AsNoTracking().AsQueryable();
+        if (affecte is > 0) qChantiers = qChantiers.Where(c => c.Id == affecte);
+        ViewBag.Chantiers = await qChantiers.OrderBy(c => c.Nom).ToListAsync(ct);
+        ViewBag.ChantierNom = affecte is > 0
+            ? (await _uow.Chantiers.GetByIdAsync(affecte.Value, ct))?.Nom
+            : null;
         ViewBag.ChantierId = chantierId;
         ViewBag.Filtre = filtre;
 
