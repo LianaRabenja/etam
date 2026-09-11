@@ -199,6 +199,62 @@
     }
   };
 </script>
+
+@* ---------------------------------------------------------------------------
+   Aide à la saisie des montants : un <input type="number"> n'affiche aucun
+   séparateur de milliers. On rappelle donc sous le champ le montant ponctué,
+   dans le même format que le reste de l'application (virgule pour les milliers).
+   La valeur envoyée au serveur n'est pas modifiée.
+   --------------------------------------------------------------------------- *@
+<script>
+(function () {
+  // Seuls les champs d'argent sont concernés (pas les quantités ni les seuils de stock).
+  function estMontant(el) {
+    if (el.type !== 'number') return false;
+    var cle = (el.name || '') + ' ' + (el.id || '');
+    return /montant|prix|solde|benefice|marche|banque|budget|enveloppe|reserve|plafond/i.test(cle);
+  }
+
+  function attacher(el) {
+    if (el.dataset.aideMontant) return;
+    el.dataset.aideMontant = '1';
+
+    var aide = document.createElement('div');
+    aide.className = 'small fw-semibold mt-1';
+    aide.style.color = '#2563eb';
+    aide.style.lineHeight = '1.2';
+    el.insertAdjacentElement('afterend', aide);
+
+    function maj() {
+      var v = parseFloat(el.value);
+      if (!isFinite(v) || v === 0) { aide.textContent = ''; return; }
+      // en-US : virgule pour les milliers, point pour les décimales — le format de l'application.
+      aide.textContent = v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' Ar';
+    }
+    el.addEventListener('input', maj);
+    el.addEventListener('change', maj);
+    maj();
+  }
+
+  function scan() {
+    var champs = document.querySelectorAll('input[type=number]');
+    for (var i = 0; i < champs.length; i++) {
+      if (estMontant(champs[i])) attacher(champs[i]);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    scan();
+    // Les lignes de prévision et d'approvisionnement sont ajoutées à la volée.
+    var enAttente = false;
+    new MutationObserver(function () {
+      if (enAttente) return;
+      enAttente = true;
+      setTimeout(function () { enAttente = false; scan(); }, 100);
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+})();
+</script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

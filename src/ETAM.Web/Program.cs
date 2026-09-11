@@ -18,14 +18,16 @@ using Serilog;
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 // ---------- Format des nombres et des dates ----------
-// Culture française (séparateur de milliers = espace : « 6 460 000 »), MAIS on conserve
-// le point comme séparateur décimal : les champs <input type="number"> envoient toujours
-// « 1.5 », qui serait rejeté par le format français standard (« 1,5 »).
+// Séparateur de milliers = VIRGULE (« 6,460,000 ») : l'espace se lit mal et on ne
+// distingue pas au premier coup d'œil le million du milliard.
+// Le séparateur décimal reste le POINT : les champs <input type="number"> envoient
+// toujours « 1.5 », qui serait rejeté par le format français standard (« 1,5 »).
+// Les deux ne peuvent donc pas être le point en même temps.
 var cultureEtam = (System.Globalization.CultureInfo)
     System.Globalization.CultureInfo.GetCultureInfo("fr-FR").Clone();
-cultureEtam.NumberFormat.NumberGroupSeparator = " ";
+cultureEtam.NumberFormat.NumberGroupSeparator = ",";
 cultureEtam.NumberFormat.NumberDecimalSeparator = ".";
-cultureEtam.NumberFormat.CurrencyGroupSeparator = " ";
+cultureEtam.NumberFormat.CurrencyGroupSeparator = ",";
 cultureEtam.NumberFormat.CurrencyDecimalSeparator = ".";
 System.Globalization.CultureInfo.DefaultThreadCurrentCulture = cultureEtam;
 System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = cultureEtam;
