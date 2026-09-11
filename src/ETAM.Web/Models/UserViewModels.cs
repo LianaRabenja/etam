@@ -27,3 +27,34 @@ public class CreateUserViewModel
     [Display(Name = "Chantier affecté")]
     public long? ChantierId { get; set; }
 }
+
+public class EditUserViewModel
+{
+    public string Id { get; set; } = null!;
+
+    [Required, EmailAddress]
+    [Display(Name = "Adresse email")]
+    public string Email { get; set; } = null!;
+
+    [Required]
+    [Display(Name = "Nom complet")]
+    public string NomComplet { get; set; } = null!;
+
+    [Display(Name = "Fonction")]
+    public string? Fonction { get; set; }
+
+    [Required]
+    [Display(Name = "Rôle")]
+    public string Role { get; set; } = null!;
+
+    [Display(Name = "Chantier affecté")]
+    public long? ChantierId { get; set; }
+
+    [Display(Name = "Compte actif")]
+    public bool EstActif { get; set; } = true;
+
+    /// <summary>Laisser vide pour conserver le mot de passe actuel.</summary>
+    [DataType(DataType.Password), MinLength(8)]
+    [Display(Name = "Nouveau mot de passe")]
+    public string? NouveauMotDePasse { get; set; }
+}

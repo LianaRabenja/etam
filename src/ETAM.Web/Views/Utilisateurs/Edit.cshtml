@@ -1,0 +1,69 @@
+@model ETAM.Web.Models.EditUserViewModel
+@{
+    ViewData["Title"] = "Modifier l'utilisateur";
+    var roles = ViewBag.Roles as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>
+                    ?? Enumerable.Empty<ETAM.Domain.Entities.Chantier>();
+}
+<div class="etam-card p-4" style="max-width:640px">
+<form asp-action="Edit" method="post">
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div asp-validation-summary="All" class="alert alert-danger py-2 small"></div>
+    }
+    <input type="hidden" asp-for="Id" />
+
+    <div class="row g-3">
+        <div class="col-md-6"><label class="form-label" asp-for="NomComplet"></label>
+            <input asp-for="NomComplet" class="form-control" />
+            <span asp-validation-for="NomComplet" class="text-danger small"></span></div>
+
+        <div class="col-md-6"><label class="form-label" asp-for="Email"></label>
+            <input asp-for="Email" class="form-control" />
+            <span asp-validation-for="Email" class="text-danger small"></span>
+            <small class="text-muted">Sert aussi d'identifiant de connexion.</small></div>
+
+        <div class="col-md-6"><label class="form-label" asp-for="Fonction"></label>
+            <input asp-for="Fonction" class="form-control" /></div>
+
+        <div class="col-md-6"><label class="form-label" asp-for="Role"></label>
+            <select asp-for="Role" class="form-select">
+                @foreach (var r in roles)
+                {
+                    <option value="@r" selected="@(Model.Role == r)">@r</option>
+                }
+            </select>
+            <span asp-validation-for="Role" class="text-danger small"></span></div>
+
+        <div class="col-md-6"><label class="form-label" asp-for="ChantierId"></label>
+            <select asp-for="ChantierId" class="form-select">
+                <option value="">— tous les chantiers —</option>
+                @foreach (var c in chantiers)
+                {
+                    <option value="@c.Id" selected="@(Model.ChantierId == c.Id)">@c.Nom (@c.Code)</option>
+                }
+            </select>
+            <span asp-validation-for="ChantierId" class="text-danger small"></span>
+            <small class="text-muted">Obligatoire pour un <strong>Magasinier</strong> et un <strong>Chef de chantier</strong>.</small></div>
+
+        <div class="col-md-6"><label class="form-label" asp-for="NouveauMotDePasse"></label>
+            <input asp-for="NouveauMotDePasse" class="form-control" autocomplete="new-password" />
+            <span asp-validation-for="NouveauMotDePasse" class="text-danger small"></span>
+            <small class="text-muted">Laissez vide pour ne pas le changer.</small></div>
+
+        <div class="col-12">
+            <div class="form-check">
+                <input asp-for="EstActif" class="form-check-input" />
+                <label class="form-check-label" asp-for="EstActif"></label>
+            </div>
+            <span asp-validation-for="EstActif" class="text-danger small"></span>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer</button>
+        <a asp-action="Index" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }
