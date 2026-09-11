@@ -27,10 +27,16 @@
         <div class="col-md-4"><label class="form-label">Budget projet (calculé)</label>
             <input id="inBudgetProjet" class="form-control bg-light" readonly value="0" /></div>
 
-        <div class="col-md-6"><label class="form-label">Budget Matériel (Ar)</label>
-            <input asp-for="BudgetMateriel" type="number" step="0.01" class="form-control" /></div>
-        <div class="col-md-6"><label class="form-label">Réserve (Ar)</label>
-            <input asp-for="Reserve" type="number" step="0.01" class="form-control" /></div>
+        <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Compte bancaire du chantier</h6>
+            <small class="text-muted">Ce compte est créé automatiquement avec le chantier. La somme indiquée y entre à l'ouverture.</small></div>
+        <div class="col-md-4"><label class="form-label">Banque</label>
+            <input asp-for="NomBanque" class="form-control" placeholder="BNI, BOA, BFV..." />
+            <span asp-validation-for="NomBanque" class="text-danger small"></span></div>
+        <div class="col-md-4"><label class="form-label">Numéro de compte</label>
+            <input asp-for="NumeroCompte" id="inNumero" class="form-control" placeholder="ex : 00012 345678 90" /></div>
+        <div class="col-md-4"><label class="form-label">Somme qui entre en banque (Ar)</label>
+            <input asp-for="MontantEnBanque" id="inEnBanque" type="number" step="0.01" class="form-control" />
+            <small class="text-muted">Par défaut le montant du marché — corrigez si le versement est différent.</small></div>
         <div class="col-12"><label class="form-label">Observation</label>
             <textarea asp-for="Observation" class="form-control" rows="2"></textarea></div>
     </div>
@@ -47,11 +53,25 @@
     var m = document.getElementById('inMarche'),
         b = document.getElementById('inBenefice'),
         r = document.getElementById('inBudgetProjet');
+    var banque = document.getElementById('inEnBanque'),
+        numero = document.getElementById('inNumero'),
+        code   = document.getElementById('Code'),
+        banqueTouchee = false;
+    if (banque) banque.addEventListener('input', function(){ banqueTouchee = true; });
     function maj(){
       var v = (parseFloat(m.value)||0) - (parseFloat(b.value)||0);
       r.value = new Intl.NumberFormat('fr-FR').format(Math.round(v));
+      // Tant que l'utilisateur n'a pas saisi de montant bancaire, on recopie le marche.
+      if (banque && !banqueTouchee) banque.value = m.value;
     }
     m.addEventListener('input', maj); b.addEventListener('input', maj); maj();
+    // Numero de compte propose a partir du code chantier, modifiable.
+    if (code && numero) {
+      code.addEventListener('input', function(){
+        if (!numero.dataset.touche) numero.value = code.value ? 'CH-' + code.value : '';
+      });
+      numero.addEventListener('input', function(){ numero.dataset.touche = '1'; });
+    }
   })();
 </script>
 }

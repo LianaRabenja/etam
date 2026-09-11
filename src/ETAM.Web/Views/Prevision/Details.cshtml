@@ -16,6 +16,16 @@
                      && Model.Statut != StatutPrevision.RapportSoumis
                      && Model.Statut != StatutPrevision.Cloturee;
 
+    // Seuls l'Administrateur et le Correspondant (RF) pilotent le workflow : soumettre,
+    // valider, exécuter, refuser, corriger. Les autres rôles consultent la prévision et
+    // déposent les justificatifs des travaux — ils ne doivent voir aucun bouton de décision.
+    var peutDecider = User.IsInRole("Administrateur") || User.IsInRole("Correspondant");
+
+    // « Poste prévu » et « Reste sur l'enveloppe » n'ont de sens que si au moins une ligne
+    // est rattachée au plan de projet. Sinon les deux colonnes ne montrent que « Non rattaché »
+    // et « — » : on les retire, et elles réapparaissent dès qu'un rattachement existe.
+    var afficherPoste = Model.Lignes.Any(l => l.PrevisionGlobaleLigneId != null);
+
     // Libellés lisibles : sans cela l'écran affiche le nom brut de l'énumération.
     string LibelleStatut(StatutPrevision s) => s switch
     {
@@ -64,12 +74,19 @@
             </div>
             <p class="text-muted mb-3">Chantier : <strong>@Model.Chantier?.Nom</strong> · @Model.DatePrevision.ToString("dd/MM/yyyy")</p>
             <table class="table table-sm align-middle">
-                <thead><tr><th>Désignation</th><th>Poste prévu</th><th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th><th class="text-end">Reste sur l'enveloppe</th></tr></thead>
+                <thead><tr>
+                    <th>Désignation</th>
+                    @if (afficherPoste) { <th>Poste prévu</th> }
+                    <th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th>
+                    @if (afficherPoste) { <th class="text-end">Reste sur l'enveloppe</th> }
+                </tr></thead>
                 <tbody>
                 @foreach (var l in Model.Lignes)
                 {
                     <tr>
                         <td>@l.Designation<div class="small text-muted">@l.Categorie</div></td>
+                        @if (afficherPoste)
+                        {
                         <td class="small">
                             @if (l.PrevisionGlobaleLigne is not null)
                             {
@@ -84,10 +101,13 @@
                                 <span class="badge bg-warning text-dark">Non rattaché</span>
                             }
                         </td>
+                        }
                         <td><span class="badge @(l.TypeBudget == TypeBudget.Compte ? "bg-primary" : "bg-success")">@l.TypeBudget</span></td>
                         <td class="text-end">@l.Quantite.ToString("N2")</td>
                         <td class="text-end">@l.PrixUnitaireEstime.ToString("N0")</td>
                         <td class="text-end fw-semibold">@l.Total.ToString("N0")</td>
+                        @if (afficherPoste)
+                        {
                         <td class="text-end">
                             @if (l.PrevisionGlobaleLigne is null)
                             {
@@ -111,10 +131,15 @@
                                 <span class="text-muted">—</span>
                             }
                         </td>
+                        }
                     </tr>
                 }
                 </tbody>
-                <tfoot><tr><th colspan="5" class="text-end">Total</th><th class="text-end">@Model.Total.ToString("N0") Ar</th><th></th></tr></tfoot>
+                <tfoot><tr>
+                    <th colspan="@(afficherPoste ? 5 : 4)" class="text-end">Total</th>
+                    <th class="text-end">@Model.Total.ToString("N0") Ar</th>
+                    @if (afficherPoste) { <th></th> }
+                </tr></tfoot>
             </table>
             @if (resteApres.Any() && estProjection)
             {
@@ -152,16 +177,25 @@
 
         <!-- Actions du workflow, selon statut et rôle -->
         <div class="etam-card p-4">
-            <h6 class="fw-bold mb-3">Workflow</h6>
+            @if (peutDecider)
+            {
+                <h6 class="fw-bold mb-3">Workflow</h6>
+            }
+            else
+            {
+                <h6 class="fw-bold mb-3">Où en est cette prévision</h6>
+                <p class="small text-muted">La validation revient à l'Administrateur et au Correspondant.
+                   De votre côté, déposez le compte rendu et les justificatifs des travaux plus bas.</p>
+            }
 
-            @if (Model.Statut == StatutPrevision.Brouillon)
+            @if (Model.Statut == StatutPrevision.Brouillon && peutDecider)
             {
                 <form asp-action="Soumettre" method="post" class="mb-2">
                     @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
                     <button class="btn btn-info w-100"><i class="fa-solid fa-paper-plane me-1"></i> Soumettre</button>
                 </form>
             }
-            @if (Model.Statut == StatutPrevision.Soumise && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+            @if (Model.Statut == StatutPrevision.Soumise && peutDecider)
             {
                 <form asp-action="ValiderRf" method="post" class="mb-2">
                     @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
@@ -184,7 +218,7 @@
                 </form>
             }
             @if (Model.Statut != StatutPrevision.Executee && Model.Statut != StatutPrevision.Refusee
-                 && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+                 && peutDecider)
             {
                 <button class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#modalRefus">
                     <i class="fa-solid fa-xmark me-1"></i> Refuser

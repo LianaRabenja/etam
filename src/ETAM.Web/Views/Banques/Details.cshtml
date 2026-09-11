@@ -17,14 +17,21 @@
     <tbody>
     @foreach (var m in mvts)
     {
-        var (badge, signe) = m.Type == ETAM.Domain.Enums.TypeMouvementBancaire.Depot
-            ? ("bg-success", "+") : ("bg-danger", "-");
+        var estFlechage = m.Type == ETAM.Domain.Enums.TypeMouvementBancaire.Flechage;
+        var estDepot = m.Type == ETAM.Domain.Enums.TypeMouvementBancaire.Depot;
+        // Le fléchage ne bouge pas le solde : ni crédit, ni débit. Il s'affiche en neutre.
+        var badge = estFlechage ? "bg-info text-dark" : estDepot ? "bg-success" : "bg-danger";
+        var signe = estFlechage ? "" : estDepot ? "+" : "-";
+        var couleur = estFlechage ? "text-muted" : estDepot ? "text-success" : "text-danger";
         <tr>
             <td class="small">@m.Date.ToLocalTime().ToString("dd/MM/yyyy")</td>
             <td><span class="badge @badge">@m.Type</span></td>
             <td class="small">@m.Beneficiaire @(string.IsNullOrEmpty(m.Beneficiaire) ? "" : "· ")@m.Motif</td>
             <td class="small text-muted">@m.Reference</td>
-            <td class="text-end fw-semibold @(m.Type == ETAM.Domain.Enums.TypeMouvementBancaire.Depot ? "text-success" : "text-danger")">@signe @m.Montant.ToString("N0")</td>
+            <td class="text-end fw-semibold @couleur">
+                @signe @m.Montant.ToString("N0")
+                @if (estFlechage) { <div><small class="text-muted">réservé — solde inchangé</small></div> }
+            </td>
         </tr>
     }
     </tbody>

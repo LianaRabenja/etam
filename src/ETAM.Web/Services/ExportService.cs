@@ -35,7 +35,7 @@ public static class ExportService
                     col.Item().Text(titre).FontSize(16).Bold().FontColor(Bleu);
                     if (!string.IsNullOrWhiteSpace(sousTitre))
                         col.Item().Text(sousTitre).FontSize(9).FontColor(Colors.Grey.Darken1);
-                    col.Item().Text($"ETAM ERP · Généré le {DateTime.Now:dd/MM/yyyy HH:mm}")
+                    col.Item().Text($"ETAM · Généré le {DateTime.Now:dd/MM/yyyy HH:mm}")
                         .FontSize(8).FontColor(Colors.Grey.Medium);
                 });
 

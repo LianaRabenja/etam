@@ -44,7 +44,14 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 
 // ---------- MVC + FluentValidation ----------
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    // Sans cette ligne, .NET considere toute propriete de reference non-nullable comme
+    // OBLIGATOIRE — y compris les proprietes de navigation (Materiau.Chantier,
+    // DetteFournisseur.Fournisseur...), que les formulaires ne postent jamais.
+    // Resultat : ModelState invalide et l'enregistrement echouait en silence.
+    options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+});
 builder.Services.AddFluentValidationAutoValidation()
                 .AddFluentValidationClientsideAdapters();
 

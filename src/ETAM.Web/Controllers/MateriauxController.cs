@@ -39,15 +39,47 @@ public class MateriauxController : Controller
         return user?.ChantierId;
     }
 
+    /// <summary>
+    /// Alimente le sélecteur de chantier et retient celui qui est filtré.
+    /// Le stock se suit chantier par chantier : sans filtre, les articles de plusieurs
+    /// chantiers se mélangent dans la même liste et le suivi devient impossible.
+    /// </summary>
+    private async Task<long?> PreparerFiltreChantierAsync(long? chantierId, long? chantierAffecte, CancellationToken ct)
+    {
+        // Un utilisateur rattaché à un chantier ne peut pas en voir un autre : son filtre est imposé.
+        if (chantierAffecte is > 0)
+        {
+            ViewBag.ChantierVerrouille = true;
+            ViewBag.ChantierFiltre = chantierAffecte;
+            ViewBag.ChantierFiltreNom = (await _uow.Chantiers.GetByIdAsync(chantierAffecte.Value, ct))?.Nom;
+            return chantierAffecte;
+        }
+
+        var chantiers = (await _uow.Chantiers.ListAllAsync(ct)).OrderBy(c => c.Nom).ToList();
+        ViewBag.Chantiers = chantiers;
+        ViewBag.ChantierVerrouille = false;
+
+        // Aucun chantier choisi : on se place sur le premier pour ne jamais afficher un stock mélangé.
+        var retenu = chantierId is > 0
+            ? chantierId
+            : chantiers.FirstOrDefault()?.Id;
+
+        ViewBag.ChantierFiltre = retenu;
+        ViewBag.ChantierFiltreNom = chantiers.FirstOrDefault(c => c.Id == retenu)?.Nom;
+        return retenu;
+    }
+
     // Liste du stock (vue d'origine). Le magasinier est redirigé vers SA fiche.
-    public async Task<IActionResult> Index(CancellationToken ct)
+    public async Task<IActionResult> Index(long? chantierId, CancellationToken ct)
     {
         if (User.IsInRole("Magasinier"))
             return RedirectToAction(nameof(Fiche));
 
         var chantierAffecte = await ChantierAffecteAsync();
+        var filtre = await PreparerFiltreChantierAsync(chantierId, chantierAffecte, ct);
+
         var q = _uow.Materiaux.Query().AsNoTracking().Include(m => m.Chantier).AsQueryable();
-        if (chantierAffecte is > 0) q = q.Where(m => m.ChantierId == chantierAffecte);
+        if (filtre is > 0) q = q.Where(m => m.ChantierId == filtre);
 
         var materiaux = await q
             .OrderBy(m => m.Chantier!.Nom).ThenBy(m => m.Designation)
@@ -60,15 +92,16 @@ public class MateriauxController : Controller
     // ---------------------------------------------------------------------
     // Liste des matériaux (fiche par article). Clic sur « Détails » -> historique des mouvements.
     [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier,Magasinier")]
-    public async Task<IActionResult> Fiche(CancellationToken ct)
+    public async Task<IActionResult> Fiche(long? chantierId, CancellationToken ct)
     {
         var chantierAffecte = await ChantierAffecteAsync();
-        var q = _uow.Materiaux.Query().AsNoTracking().Include(m => m.Chantier).AsQueryable();
+        var filtre = await PreparerFiltreChantierAsync(chantierId, chantierAffecte, ct);
+
         if (chantierAffecte is > 0)
-        {
-            q = q.Where(m => m.ChantierId == chantierAffecte);
-            ViewBag.ChantierAffecte = (await _uow.Chantiers.GetByIdAsync(chantierAffecte.Value, ct))?.Nom;
-        }
+            ViewBag.ChantierAffecte = ViewBag.ChantierFiltreNom;
+
+        var q = _uow.Materiaux.Query().AsNoTracking().Include(m => m.Chantier).AsQueryable();
+        if (filtre is > 0) q = q.Where(m => m.ChantierId == filtre);
 
         var materiaux = await q
             .OrderBy(m => m.Chantier!.Nom).ThenBy(m => m.Designation)

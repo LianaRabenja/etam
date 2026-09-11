@@ -1,10 +1,14 @@
 @{
-    ViewData["Title"] = "Transfert vers un budget";
+    ViewData["Title"] = "Fléchage vers un budget";
     var comptes = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.CompteBancaire> ?? Enumerable.Empty<ETAM.Domain.Entities.CompteBancaire>();
     long? preselect = ViewBag.PreselectChantierId;
 }
 <div class="etam-card p-4" style="max-width:640px">
-<p class="text-muted">Transférez de l'argent du compte bancaire d'un chantier vers son Budget Matériel. La banque diminue, le budget réel augmente (le plafond ne change pas).</p>
+<div class="alert alert-info py-2 small">
+    <strong>Fléchage, pas un retrait.</strong> Vous réservez une part du solde bancaire pour un budget.
+    <strong>L'argent reste en banque</strong> et le solde ne change pas : il ne diminuera qu'à l'exécution
+    d'une prévision réelle, quand l'argent sort effectivement.
+</div>
 <form asp-action="Transferer" method="post">
     <div class="mb-3">
         <label class="form-label">Destination</label>
@@ -19,25 +23,30 @@
             <option value="">-- choisir le chantier --</option>
             @foreach (var cpt in comptes)
             {
+                var dejaFleche = (cpt.Chantier?.MaterielTransfere ?? 0m) - (cpt.Chantier?.Consommation ?? 0m);
+                if (dejaFleche < 0) { dejaFleche = 0m; }
+                var dispoFlechage = cpt.Solde - dejaFleche;
+                if (dispoFlechage < 0) { dispoFlechage = 0m; }
                 <option value="@cpt.ChantierId" selected="@(preselect == cpt.ChantierId)">
-                    @cpt.Chantier?.Nom — disponible en banque : @cpt.Solde.ToString("N0") Ar
+                    @cpt.Chantier?.Nom — à flécher : @dispoFlechage.ToString("N0") Ar
+                    (en banque @cpt.Solde.ToString("N0") Ar, déjà réservé @dejaFleche.ToString("N0") Ar)
                 </option>
             }
         </select>
         @if (!comptes.Any())
         {
-            <div class="alert alert-warning small mt-2 mb-0">Aucun compte bancaire de chantier n'existe. Réinitialisez la base (voir instructions) pour créer un compte par chantier.</div>
+            <div class="alert alert-warning small mt-2 mb-0">Aucun compte bancaire de chantier n'existe. Créez-en un depuis le menu Banques.</div>
         }
     </div>
     <div class="mb-3">
-        <label class="form-label">Montant à transférer (Ar)</label>
+        <label class="form-label">Montant à flécher (Ar)</label>
         <input type="number" step="0.01" min="0" name="montant" class="form-control" required />
     </div>
     @if (!User.IsInRole("Administrateur"))
     {
         <div class="alert alert-info small">En tant que Responsable, votre transfert sera soumis à la validation de l'Administrateur avant d'être appliqué.</div>
     }
-    <button type="submit" class="btn btn-success"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i> @(User.IsInRole("Administrateur") ? "Transférer" : "Demander le transfert")</button>
+    <button type="submit" class="btn btn-success"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i> @(User.IsInRole("Administrateur") ? "Flécher" : "Demander le fléchage")</button>
     <a asp-action="Index" class="btn btn-light">Annuler</a>
 </form>
 </div>

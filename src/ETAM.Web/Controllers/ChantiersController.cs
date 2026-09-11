@@ -92,8 +92,8 @@ public class ChantiersController : Controller
         var compte = new CompteBancaire
         {
             Nom = $"Compte {chantier.Nom}",
-            Banque = "BNI",
-            Numero = $"CH-{chantier.Code}",
+            Banque = string.IsNullOrWhiteSpace(dto.NomBanque) ? "BNI" : dto.NomBanque.Trim(),
+            Numero = string.IsNullOrWhiteSpace(dto.NumeroCompte) ? $"CH-{chantier.Code}" : dto.NumeroCompte.Trim(),
             Type = TypeCompteBancaire.Chantier,
             ChantierId = chantier.Id,
             Solde = 0m
@@ -101,17 +101,21 @@ public class ChantiersController : Controller
         await _uow.ComptesBancaires.AddAsync(compte, ct);
         await _uow.SaveChangesAsync(ct);
 
-        if (chantier.MontantMarche > 0)
+        // Somme réellement versée en banque à l'ouverture : saisie à la création.
+        // Si elle n'est pas renseignée, on retombe sur le montant du marché.
+        var montantEnBanque = dto.MontantEnBanque > 0 ? dto.MontantEnBanque : chantier.MontantMarche;
+
+        if (montantEnBanque > 0)
         {
-            // 1) Encaissement du marché
+            // 1) Encaissement à l'ouverture du compte
             await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
             {
                 CompteBancaireId = compte.Id, ChantierId = chantier.Id, Date = DateTime.UtcNow,
-                Type = TypeMouvementBancaire.Depot, Montant = chantier.MontantMarche,
-                Motif = $"Encaissement du marché — {chantier.Nom}",
+                Type = TypeMouvementBancaire.Depot, Montant = montantEnBanque,
+                Motif = $"Versement à l'ouverture — {chantier.Nom} ({compte.Banque})",
                 Reference = $"MARCHE-{chantier.Code}", EstValide = true
             }, ct);
-            compte.Solde += chantier.MontantMarche;
+            compte.Solde += montantEnBanque;
 
             // Le bénéfice reste sur le même compte : aucun mouvement de sortie.
             // La séparation bénéfice / budget projet est purement comptable (voir fiche chantier).
@@ -121,8 +125,9 @@ public class ChantiersController : Controller
 
         // À la création d'un chantier, on enchaîne directement sur la saisie de sa
         // prévision globale (budget projet = marché − bénéfice), conformément au processus métier.
-        TempData["Success"] = $"Chantier « {chantier.Nom} » créé. Marché de {chantier.MontantMarche:N0} Ar mis en banque " +
-                              $"(dont bénéfice {chantier.Benefice:N0} Ar). Budget projet à dépenser : {chantier.BudgetProjet:N0} Ar. " +
+        TempData["Success"] = $"Chantier « {chantier.Nom} » créé. {montantEnBanque:N0} Ar versés sur le compte {compte.Banque} " +
+                              $"({compte.Numero}). Budget projet à dépenser : {chantier.BudgetProjet:N0} Ar " +
+                              $"(marché {chantier.MontantMarche:N0} Ar − bénéfice {chantier.Benefice:N0} Ar). " +
                               $"Saisissez maintenant la prévision globale.";
         return RedirectToAction("Create", "PrevisionGlobale", new { chantierId = chantier.Id });
     }

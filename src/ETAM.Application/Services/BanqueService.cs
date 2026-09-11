@@ -31,8 +31,10 @@ public class BanqueService : IBanqueService
         var compte = await _uow.ComptesBancaires.GetByIdAsync(compteId, ct);
         if (compte is null) return Result.Failure("Compte bancaire introuvable.");
 
-        // Débit : dépôt exclu.
-        var estDebit = type != TypeMouvementBancaire.Depot;
+        // Débit : le dépôt (entrée) et le fléchage (simple affectation, l'argent reste
+        // en banque) ne débitent pas le compte.
+        var estDebit = type != TypeMouvementBancaire.Depot
+                    && type != TypeMouvementBancaire.Flechage;
         if (estDebit && montant > compte.Solde)
             return Result.Failure($"Solde insuffisant ({compte.Solde:N0} Ar) pour ce {type.ToString().ToLower()}.");
 
@@ -48,7 +50,14 @@ public class BanqueService : IBanqueService
             Date = DateTime.UtcNow
         }, ct);
 
-        compte.Solde += estDebit ? -montant : montant;
+        if (type == TypeMouvementBancaire.Flechage)
+        {
+            // Aucun impact sur le solde : le fléchage réserve, il ne sort pas l'argent.
+        }
+        else
+        {
+            compte.Solde += estDebit ? -montant : montant;
+        }
         _uow.ComptesBancaires.Update(compte);
         await _uow.SaveChangesAsync(ct);
 

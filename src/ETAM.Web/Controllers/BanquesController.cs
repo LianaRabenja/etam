@@ -185,7 +185,16 @@ public class BanquesController : Controller
     private async Task EnregistrerDemandeTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (montant <= 0) { TempData["Error"] = "Le montant doit être positif."; return; }
-        if (montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant sur le compte ({compte.Solde:N0} Ar)."; return; }
+
+        // On ne contrôle plus le solde brut mais ce qui n'est pas DÉJÀ fléché :
+        // le fléchage ne sort pas l'argent de la banque, donc le solde seul ne protège de rien.
+        var disponible = await DisponibleAFlecherAsync(compte, ct);
+        if (montant > disponible)
+        {
+            TempData["Error"] = $"Montant trop élevé : {disponible:N0} Ar encore disponibles à flécher " +
+                                $"sur ce compte (solde {compte.Solde:N0} Ar, dont une partie est déjà réservée).";
+            return;
+        }
 
         var estAdmin = User.IsInRole("Administrateur");
         var cibleNom = compte.Type == TypeCompteBancaire.Comptes
@@ -195,9 +204,9 @@ public class BanquesController : Controller
         await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
         {
             CompteBancaireId = compte.Id,
-            Type = TypeMouvementBancaire.Virement,
+            Type = TypeMouvementBancaire.Flechage,
             Montant = montant,
-            Motif = $"Transfert vers {cibleNom}",
+            Motif = $"Fléchage vers {cibleNom} (l'argent reste en banque)",
             ChantierId = compte.ChantierId,
             Date = DateTime.UtcNow,
             EstValide = estAdmin,
@@ -207,11 +216,11 @@ public class BanquesController : Controller
         if (estAdmin)
         {
             await AppliquerTransfertAsync(compte, montant, ct);
-            TempData["Success"] = $"{montant:N0} Ar transférés vers le {cibleNom}. Le budget réel a augmenté d'autant.";
+            TempData["Success"] = $"{montant:N0} Ar fléchés vers le {cibleNom}. Le solde bancaire est inchangé : l'argent ne sortira qu'à l'exécution d'une prévision réelle.";
         }
         else
         {
-            TempData["Success"] = $"Demande de transfert de {montant:N0} Ar vers le {cibleNom} enregistrée — en attente de validation de l'Administrateur.";
+            TempData["Success"] = $"Demande de fléchage de {montant:N0} Ar vers le {cibleNom} enregistrée — en attente de validation de l'Administrateur.";
         }
         await _uow.SaveChangesAsync(ct);
     }
@@ -225,13 +234,18 @@ public class BanquesController : Controller
         if (mvt is null || mvt.EstValide) { TempData["Error"] = "Demande introuvable ou déjà validée."; return RedirectToAction(nameof(Index)); }
         var compte = await _uow.ComptesBancaires.GetByIdAsync(mvt.CompteBancaireId, ct);
         if (compte is null) return NotFound();
-        if (mvt.Montant > compte.Solde) { TempData["Error"] = $"Solde insuffisant ({compte.Solde:N0} Ar)."; return RedirectToAction(nameof(Index)); }
+        var dispoValidation = await DisponibleAFlecherAsync(compte, ct);
+        if (mvt.Montant > dispoValidation)
+        {
+            TempData["Error"] = $"Montant trop élevé : {dispoValidation:N0} Ar encore disponibles à flécher sur ce compte.";
+            return RedirectToAction(nameof(Index));
+        }
 
         await AppliquerTransfertAsync(compte, mvt.Montant, ct);
         mvt.EstValide = true;
         _uow.MouvementsBancaires.Update(mvt);
         await _uow.SaveChangesAsync(ct);
-        TempData["Success"] = "Transfert validé et appliqué.";
+        TempData["Success"] = "Fléchage validé et appliqué. Le solde bancaire reste inchangé.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -250,7 +264,12 @@ public class BanquesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // Applique le transfert : débite la banque et alimente le budget réel correspondant.
+    /// <summary>
+    /// Applique le fléchage : affecte une part du solde bancaire à un budget.
+    /// LA BANQUE NE BOUGE PAS. L'argent reste sur le compte ; on note simplement
+    /// qu'il est réservé à ce budget. Le solde ne diminue qu'à la sortie d'argent
+    /// réelle, c'est-à-dire à l'exécution d'une prévision réelle (PrevisionService).
+    /// </summary>
     private async Task AppliquerTransfertAsync(CompteBancaire compte, decimal montant, CancellationToken ct)
     {
         if (compte.Type == TypeCompteBancaire.Comptes)
@@ -264,7 +283,32 @@ public class BanquesController : Controller
             var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
             if (chantier is not null) { chantier.MaterielTransfere += montant; _uow.Chantiers.Update(chantier); }
         }
-        compte.Solde -= montant;
-        _uow.ComptesBancaires.Update(compte);
+        // Volontairement : aucun « compte.Solde -= montant ». Voir le commentaire ci-dessus.
+    }
+
+    /// <summary>
+    /// Montant du solde bancaire qui n'est pas déjà fléché vers un budget.
+    /// Empêche de flécher dix fois le même argent : on ne peut affecter que ce qui
+    /// n'est ni déjà réservé, ni encore consommé.
+    /// </summary>
+    private async Task<decimal> DisponibleAFlecherAsync(CompteBancaire compte, CancellationToken ct)
+    {
+        decimal dejaFleche = 0m;
+
+        if (compte.Type == TypeCompteBancaire.Comptes)
+        {
+            var budget = (await _uow.BudgetsComptes.ListAsync(bg => bg.EstActif, ct))
+                .OrderByDescending(bg => bg.Annee).FirstOrDefault();
+            if (budget is not null) dejaFleche = budget.MontantTransfere - budget.MontantConsomme;
+        }
+        else if (compte.ChantierId.HasValue)
+        {
+            var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
+            if (chantier is not null) dejaFleche = chantier.MaterielTransfere - chantier.Consommation;
+        }
+
+        if (dejaFleche < 0) dejaFleche = 0m;
+        var dispo = compte.Solde - dejaFleche;
+        return dispo > 0 ? dispo : 0m;
     }
 }

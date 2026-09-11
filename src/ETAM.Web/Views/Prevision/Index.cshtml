@@ -1,5 +1,8 @@
 @model List<ETAM.Domain.Entities.PrevisionJournaliere>
-@{ ViewData["Title"] = "Prévisions journalières"; }
+@{ ViewData["Title"] = "Prévisions journalières";
+   // Seuls l'Administrateur et le Correspondant valident ou exécutent : pour les autres,
+   // le bouton ne doit pas promettre une action qu'ils ne peuvent pas faire.
+   var peutDecider = User.IsInRole("Administrateur") || User.IsInRole("Correspondant"); }
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-muted mb-0">@Model.Count prévision(s)</p>
     <div class="d-flex align-items-center">
@@ -35,7 +38,9 @@
             <td class="text-end">@p.Total.ToString("N0") Ar</td>
             <td class="text-end text-nowrap">
                 @{
-                    var (libelle, couleur) = p.Statut switch
+                    var (libelle, couleur) = !peutDecider
+                        ? ("Détails", "btn-light")
+                        : p.Statut switch
                     {
                         StatutPrevision.Brouillon => ("Examiner / Soumettre", "btn-outline-info"),
                         StatutPrevision.Soumise => ("Examiner / Valider", "btn-outline-primary"),
@@ -44,7 +49,7 @@
                         _ => ("Détails", "btn-light")
                     };
                 }
-                @if (p.EstModifiable && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")))
+                @if (p.EstModifiable && peutDecider)
                 {
                     <a asp-action="Edit" asp-route-id="@p.Id" class="btn btn-sm btn-light"><i class="fa-solid fa-pen me-1"></i> Modifier</a>
                 }

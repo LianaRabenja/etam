@@ -11,7 +11,6 @@
 <div class="d-flex justify-content-between align-items-end mb-3">
     <div>
         <h5 class="mb-0">Recap Budget chantier</h5>
-        <small class="text-muted">Tout ce qui doit sortir de la banque ce jour.</small>
     </div>
     <form method="get">
         <label class="form-label small text-muted mb-1">Journée</label>
@@ -93,27 +92,23 @@
 @if (peutModifier)
 {
     <div class="etam-card p-3">
-        <h6 class="mb-1">Ajouter une sortie hors chantier</h6>
-        <p class="text-muted small mb-3">
-            Tout ce qui part le même jour sans appartenir à un chantier :
-            DAF chauffeur, carte rose, avance compresseur, chambre d'hôtel, matériaux divers…
-        </p>
+        <h6 class="mb-3">Ajouter une sortie hors chantier</h6>
 
         <form asp-action="AjouterAutreDepense" method="post" class="row g-2 align-items-end">
             @Html.AntiForgeryToken()
             <input type="hidden" name="date" value="@date.ToString("yyyy-MM-dd")" />
 
             <div class="col-md-5">
-                <label class="form-label small">Quoi ?</label>
+                <label class="form-label small">Désignation</label>
                 <input name="libelle" class="form-control" required placeholder="DAF CHAUFFEUR" />
             </div>
             <div class="col-md-3">
-                <label class="form-label small">Combien ?</label>
+                <label class="form-label small">Montant (Ar)</label>
                 <input name="montant" type="number" step="0.01" min="0.01" class="form-control"
                        required placeholder="300" />
             </div>
             <div class="col-md-3">
-                <label class="form-label small">Remarque</label>
+                <label class="form-label small">Observation</label>
                 <input name="observation" class="form-control" />
             </div>
             <div class="col-md-1">

@@ -100,12 +100,13 @@
                     @foreach (var m in Model.Mouvements)
                     {
                         var estDepot = m.Type == TypeMouvementBancaire.Depot;
+                        var estFlechage = m.Type == TypeMouvementBancaire.Flechage;
                         <tr>
                             <td class="small">@m.Date.ToLocalTime().ToString("dd/MM/yyyy")</td>
-                            <td><span class="badge @(estDepot ? "bg-success" : "bg-danger")">@m.Type</span></td>
+                            <td><span class="badge @(estFlechage ? "bg-info text-dark" : estDepot ? "bg-success" : "bg-danger")">@m.Type</span></td>
                             <td class="small">@m.Motif</td>
                             <td>@Html.Raw(m.EstValide ? "<span class='badge bg-success'>Validé</span>" : "<span class='badge bg-warning text-dark'>En attente</span>")</td>
-                            <td class="text-end fw-semibold @(estDepot ? "text-success" : "text-danger")">@(estDepot ? "+" : "-") @m.Montant.ToString("N0")</td>
+                            <td class="text-end fw-semibold @(estFlechage ? "text-muted" : estDepot ? "text-success" : "text-danger")">@(estFlechage ? "" : estDepot ? "+" : "-") @m.Montant.ToString("N0")</td>
                         </tr>
                     }
                     @if (!Model.Mouvements.Any()) { <tr><td colspan="5" class="text-muted text-center">Aucun mouvement.</td></tr> }

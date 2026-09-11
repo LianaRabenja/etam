@@ -2,6 +2,10 @@
 @{ ViewData["Title"] = "Nouveau matériau"; var chantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>; }
 <div class="etam-card p-4" style="max-width:760px">
 <form asp-action="Create" method="post">
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div asp-validation-summary="All" class="alert alert-danger py-2 small"></div>
+    }
     <div class="row g-3">
         <div class="col-md-6"><label class="form-label">Chantier</label>
             <select asp-for="ChantierId" class="form-select" required>
@@ -19,8 +23,6 @@
             <input asp-for="Localite" class="form-control" placeholder="Centre, Église..." /></div>
         <div class="col-md-6"><label class="form-label">Besoin ou objectif (total)</label>
             <input asp-for="Besoin" type="number" step="0.001" class="form-control" /></div>
-        <div class="col-md-4"><label class="form-label">Quantité commandée</label>
-            <input asp-for="QuantiteCommandee" type="number" step="0.001" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Quantité reçue</label>
             <input asp-for="QuantiteRecue" type="number" step="0.001" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Seuil minimal</label>

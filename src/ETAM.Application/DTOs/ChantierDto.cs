@@ -39,7 +39,16 @@ public class ChantierCreateDto
     public decimal MontantMarche { get; set; }
     /// <summary>Bénéfice conservé (ex : 80 000 000). Le reste va au chantier.</summary>
     public decimal Benefice { get; set; }
-    public decimal BudgetMateriel { get; set; }
-    public decimal Reserve { get; set; }
+
+    // --- Compte bancaire créé en même temps que le chantier ---
+    /// <summary>Nom de la banque (ex : BNI, BOA, BFV...). Saisi à la création.</summary>
+    public string NomBanque { get; set; } = "BNI";
+
+    /// <summary>Numéro du compte bancaire du chantier.</summary>
+    public string? NumeroCompte { get; set; }
+
+    /// <summary>Somme réellement versée en banque à l'ouverture (peut différer du montant du marché).</summary>
+    public decimal MontantEnBanque { get; set; }
+
     public string? Observation { get; set; }
 }

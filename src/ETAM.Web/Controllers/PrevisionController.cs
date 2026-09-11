@@ -73,10 +73,14 @@ public class PrevisionController : Controller
             .ToListAsync(ct);
 
         // Contexte budgétaire pour aider le valideur à décider.
+        // On affiche l'argent RÉELLEMENT disponible — celui qui a été fléché depuis la banque
+        // et pas encore consommé — et non le plafond théorique. C'est exactement le montant
+        // que contrôlera le décaissement (DecaissementService) : l'écran prédit donc ce qui
+        // se passera vraiment, au lieu d'annoncer un dépassement sur un plafond jamais saisi.
         var budget = (await _uow.BudgetsComptes.ListAsync(b => b.EstActif, ct))
             .OrderByDescending(b => b.Annee).FirstOrDefault();
-        ViewBag.BudgetCompteRestant = budget?.MontantRestant ?? 0m;
-        ViewBag.BudgetMaterielRestant = prevision.Chantier?.BudgetMaterielRestant ?? 0m;
+        ViewBag.BudgetCompteRestant = budget?.DisponibleReel ?? 0m;
+        ViewBag.BudgetMaterielRestant = prevision.Chantier?.MaterielDisponible ?? 0m;
 
         await ChargerResteApresLigneAsync(prevision, ct);
         return View(prevision);
@@ -307,21 +311,15 @@ public class PrevisionController : Controller
             .FirstOrDefaultAsync(x => x.Id == id, ct);
         if (p is null) return NotFound();
 
-        // Même calcul que la page de détail, pour que l'export porte la même traçabilité.
-        await ChargerResteApresLigneAsync(p, ct);
-        var reste = ViewBag.ResteApres as Dictionary<long, decimal> ?? new Dictionary<long, decimal>();
-
+        // Le rattachement au poste du plan de projet et le reste d'enveloppe ne sont plus
+        // exposés : ils sont masqués dans l'application, ils n'ont plus leur place à l'export.
         var cols = new List<ColonneExport<PrevisionLigne>>
         {
             new("Désignation", l => l.Designation),
-            new("Poste prévu", l => l.PrevisionGlobaleLigne is null
-                ? "Non rattaché"
-                : $"{l.PrevisionGlobaleLigne.Rubrique} / {l.PrevisionGlobaleLigne.Designation}"),
             new("Budget",      l => l.TypeBudget.ToString()),
             new("Quantité",    l => l.Quantite.ToString("N2"), true),
             new("Prix unit.",  l => l.PrixUnitaireEstime.ToString("N0"), true),
-            new("Total",       l => (l.Quantite * l.PrixUnitaireEstime).ToString("N0"), true),
-            new("Reste enveloppe", l => reste.TryGetValue(l.Id, out var r) ? r.ToString("N0") : "", true)
+            new("Total",       l => (l.Quantite * l.PrixUnitaireEstime).ToString("N0"), true)
         };
 
         var nom = $"Prevision_{p.Reference}".Replace(' ', '_');

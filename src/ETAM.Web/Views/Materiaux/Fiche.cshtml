@@ -1,16 +1,42 @@
 @model List<ETAM.Domain.Entities.Materiau>
-@{ ViewData["Title"] = "Fiche de gestion des matériaux"; var chantierAffecte = ViewBag.ChantierAffecte as string; }
-
-@if (!string.IsNullOrEmpty(chantierAffecte))
+@{ ViewData["Title"] = "Fiche de gestion des matériaux"; }
+@{
+    var chantiersFiltre = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>;
+    long? chantierFiltre = ViewBag.ChantierFiltre;
+    var chantierFiltreNom = ViewBag.ChantierFiltreNom as string;
+    var chantierVerrouille = ViewBag.ChantierVerrouille as bool? ?? false;
+}
+@if (chantierVerrouille)
 {
     <div class="alert alert-info py-2">
         <i class="fa-solid fa-helmet-safety me-1"></i>
-        Vous êtes magasinier du chantier <strong>@chantierAffecte</strong> — vous ne voyez que son stock.
+        Stock du chantier <strong>@chantierFiltreNom</strong>.
     </div>
 }
+else if (chantiersFiltre != null && chantiersFiltre.Any())
+{
+    <form method="get" class="etam-card p-3 mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label mb-1 fw-semibold">Chantier</label>
+                <select name="chantierId" class="form-select" onchange="this.form.submit()">
+                    @foreach (var c in chantiersFiltre)
+                    {
+                        <option value="@c.Id" selected="@(chantierFiltre == c.Id)">@c.Nom (@c.Code)</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </form>
+}
+else
+{
+    <div class="alert alert-warning py-2">Aucun chantier n'existe encore. Créez un chantier avant de saisir du stock.</div>
+}
+
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <p class="text-muted mb-0">@Model.Count matériau(x)</p>
+    <p class="text-muted mb-0">@Model.Count matériau(x)@(string.IsNullOrEmpty(chantierFiltreNom) ? "" : " — " + chantierFiltreNom)</p>
     <div class="d-flex align-items-center">
         <a asp-action="NouveauMouvement" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau mouvement</a>
         <partial name="_BoutonsExport" model='new ETAM.Web.Models.ExportLiens("Materiaux", "ExportStock")' />
@@ -20,7 +46,7 @@
 <div class="etam-card p-3">
 <table class="table table-hover align-middle datatable">
     <thead><tr>
-        <th>Chantier</th><th>Désignation</th><th>Localité</th>
+        <th>Désignation</th><th>Localité</th>
         <th class="text-end">Entrées (reçu)</th><th class="text-end">Sorties (utilisé)</th>
         <th class="text-end">Stock dispo.</th><th class="text-end">Seuil</th><th>État</th><th></th>
     </tr></thead>
@@ -31,7 +57,6 @@
                  : m.EstStockFaible ? "<span class='badge bg-warning text-dark'>Faible</span>"
                  : "<span class='badge bg-success'>OK</span>";
         <tr>
-            <td class="small">@m.Chantier?.Nom</td>
             <td class="fw-semibold">@m.Designation</td>
             <td class="small text-muted">@m.Localite</td>
             <td class="text-end text-success">+@m.QuantiteRecue.ToString("N2")</td>

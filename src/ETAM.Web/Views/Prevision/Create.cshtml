@@ -39,20 +39,19 @@
                         @c.Nom (@c.Code)@(bloque ? " — bloqué : travaux à justifier" : "")
                     </option>
                 }
-            </select>
-            <small class="text-muted">Les chantiers bloqués ne sont pas sélectionnables.</small></div>
+            </select></div>
         <div class="col-md-4"><label class="form-label">Date</label>
             <input asp-for="DatePrevision" type="date" class="form-control" /></div>
         <div class="col-md-4"><label class="form-label">Observation</label>
             <input asp-for="Observation" class="form-control" /></div>
     </div>
     <h6 class="fw-bold">Lignes</h6>
-    <p class="small text-muted">Le prix d'un article du catalogue est verrouillé. Le poste du plan de projet se rattache tout seul dès que vous saisissez la désignation ; vous pouvez le corriger si besoin.</p>
+    <p class="small text-muted">Le prix d'un article du catalogue est verrouillé. Le poste du plan de projet se rattache tout seul dès que vous saisissez la désignation.</p>
     <table class="table table-sm align-middle" id="tblLignes">
         <thead><tr>
             <th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th>
-            <th>Prix unit. estimé</th><th style="min-width:230px">Poste prévu <span class="text-muted fw-normal">(rempli seul)</span></th>
-            <th>Dette</th><th></th>
+            <th>Prix unit. estimé</th><th class="d-none">Poste prévu</th>
+            <th class="d-none">Dette</th><th></th>
         </tr></thead>
         <tbody></tbody>
     </table>
@@ -105,13 +104,13 @@
             <option value="0">Compte</option><option value="1">Matériel</option></select></td>
       <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm" value="1"></td>
       <td><input name="Lignes[${i}].PrixUnitaireEstime" type="number" step="0.01" class="form-control form-control-sm js-prix" value="0"></td>
-      <td>
+      <td class="d-none">
         <select name="Lignes[${i}].PrevisionGlobaleLigneId" class="form-select form-select-sm js-poste">
           ${optionsPostes()}
         </select>
         <small class="js-reste text-muted"></small>
       </td>
-      <td><select name="Lignes[${i}].DetteFournisseurId" class="form-select form-select-sm">${detteOptions}</select></td>
+      <td class="d-none"><select name="Lignes[${i}].DetteFournisseurId" class="form-select form-select-sm">${detteOptions}</select></td>
       <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
     document.querySelector('#tblLignes tbody').insertAdjacentHTML('beforeend', r);
