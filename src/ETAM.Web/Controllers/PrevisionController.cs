@@ -3,8 +3,10 @@ using ETAM.Application.Interfaces;
 using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
+using ETAM.Infrastructure.Identity;
 using ETAM.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,17 +19,31 @@ public class PrevisionController : Controller
     private readonly IUnitOfWork _uow;
     private readonly IReferenceDataCache _referenceData;
     private readonly ICurrentUserService _currentUser;
+    private readonly UserManager<ApplicationUser> _userManager;
 
     public PrevisionController(
         IPrevisionService service,
         IUnitOfWork uow,
         IReferenceDataCache referenceData,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        UserManager<ApplicationUser> userManager)
     {
         _service = service;
         _uow = uow;
         _referenceData = referenceData;
         _currentUser = currentUser;
+        _userManager = userManager;
+    }
+
+    /// <summary>
+    /// Chantier d'affectation. Un chef de chantier rattaché n'ouvre que les journées
+    /// de SON chantier, même en tapant l'URL d'une autre prévision.
+    /// </summary>
+    private async Task<long?> ChantierAffecteAsync()
+    {
+        if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")) return null;
+        var user = await _userManager.GetUserAsync(User);
+        return user?.ChantierId;
     }
 
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -71,6 +87,9 @@ public class PrevisionController : Controller
                 Contenu = Array.Empty<byte>()
             })
             .ToListAsync(ct);
+
+        var affecteDetails = await ChantierAffecteAsync();
+        if (affecteDetails is > 0 && prevision.ChantierId != affecteDetails) return Forbid();
 
         // Contexte budgétaire pour aider le valideur à décider.
         // On affiche l'argent RÉELLEMENT disponible — celui qui a été fléché depuis la banque
@@ -372,6 +391,9 @@ public class PrevisionController : Controller
         CancellationToken ct)
     {
         var prev = await _uow.Previsions.GetByIdAsync(id, ct);
+
+        var affecteRapport = await ChantierAffecteAsync();
+        if (prev is not null && affecteRapport is > 0 && prev.ChantierId != affecteRapport) return Forbid();
         if (prev is null) return NotFound();
         if (prev.Statut != StatutPrevision.Executee)
         {

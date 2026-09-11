@@ -1,8 +1,10 @@
 using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
+using ETAM.Infrastructure.Identity;
 using ETAM.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,11 +18,30 @@ namespace ETAM.Web.Controllers;
 public class RapportsPrevisionController : Controller
 {
     private readonly IUnitOfWork _uow;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public RapportsPrevisionController(IUnitOfWork uow) => _uow = uow;
+    public RapportsPrevisionController(IUnitOfWork uow, UserManager<ApplicationUser> userManager)
+    {
+        _uow = uow;
+        _userManager = userManager;
+    }
+
+    /// <summary>Chantier d'affectation : un chef rattaché ne justifie que SES journées.</summary>
+    private async Task<long?> ChantierAffecteAsync()
+    {
+        if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")) return null;
+        var user = await _userManager.GetUserAsync(User);
+        return user?.ChantierId;
+    }
 
     public async Task<IActionResult> Index(long? chantierId, string? filtre, CancellationToken ct)
     {
+        // Un utilisateur rattaché est forcé sur son chantier : le paramètre d'URL ne peut
+        // pas le faire sortir de son périmètre.
+        var affecte = await ChantierAffecteAsync();
+        if (affecte is > 0) chantierId = affecte;
+        ViewBag.ChantierVerrouille = affecte is > 0;
+
         var query = _uow.Previsions.Query().AsNoTracking()
             .Include(p => p.Chantier).Include(p => p.Lignes)
             // Seules les prévisions dont l'argent est sorti ont un compte rendu à fournir.
@@ -49,11 +70,12 @@ public class RapportsPrevisionController : Controller
         ViewBag.Filtre = filtre;
 
         // Compteurs pour les onglets de filtre.
-        var toutes = await _uow.Previsions.Query().AsNoTracking()
+        var qCompteurs = _uow.Previsions.Query().AsNoTracking()
             .Where(p => p.Statut == StatutPrevision.Executee
                      || p.Statut == StatutPrevision.RapportSoumis
-                     || p.Statut == StatutPrevision.Cloturee)
-            .Select(p => p.Statut).ToListAsync(ct);
+                     || p.Statut == StatutPrevision.Cloturee);
+        if (affecte is > 0) qCompteurs = qCompteurs.Where(p => p.ChantierId == affecte);
+        var toutes = await qCompteurs.Select(p => p.Statut).ToListAsync(ct);
         ViewBag.NbAttente = toutes.Count(s => s == StatutPrevision.Executee);
         ViewBag.NbReception = toutes.Count(s => s == StatutPrevision.RapportSoumis);
         ViewBag.NbClos = toutes.Count(s => s == StatutPrevision.Cloturee);
