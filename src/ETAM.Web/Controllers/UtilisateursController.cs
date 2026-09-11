@@ -72,6 +72,17 @@ public class UtilisateursController : Controller
             return View(model);
         }
 
+        // Un Magasinier comme un Chef de chantier travaillent sur UN chantier : sans
+        // affectation, ils verraient tous les chantiers. Le rattachement est obligatoire.
+        var rolesCloisonnes = new[] { "Magasinier", "Chef de chantier" };
+        if (rolesCloisonnes.Contains(model.Role) && model.ChantierId is not > 0)
+        {
+            ModelState.AddModelError(nameof(model.ChantierId),
+                $"Un {model.Role} doit être rattaché à un chantier : il ne verra que celui-ci.");
+            await ChargerListesAsync(ct);
+            return View(model);
+        }
+
         var user = new ApplicationUser
         {
             UserName = model.Email,

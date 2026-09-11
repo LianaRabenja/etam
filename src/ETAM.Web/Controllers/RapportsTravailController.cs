@@ -2,6 +2,8 @@ using ETAM.Application.Interfaces;
 using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
+using ETAM.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
 using ETAM.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,20 +21,32 @@ public class RapportsTravailController : Controller
 {
     private readonly IUnitOfWork _uow;
     private readonly IReferenceDataCache _referenceData;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public RapportsTravailController(IUnitOfWork uow, IReferenceDataCache referenceData)
+    public RapportsTravailController(IUnitOfWork uow, IReferenceDataCache referenceData,
+        UserManager<ApplicationUser> userManager)
     {
         _uow = uow;
         _referenceData = referenceData;
+        _userManager = userManager;
+    }
+
+    /// <summary>Chantier d'affectation : un chef rattaché ne voit que les rapports de son chantier.</summary>
+    private async Task<long?> ChantierAffecteAsync()
+    {
+        if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")) return null;
+        var user = await _userManager.GetUserAsync(User);
+        return user?.ChantierId;
     }
 
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var rapports = await _uow.RapportsTravail.Query().AsNoTracking()
-            .Include(r => r.Chantier)
-            .OrderByDescending(r => r.PeriodeFin)
-            .Take(200)
-            .ToListAsync(ct);
+        var affecte = await ChantierAffecteAsync();
+        var q = _uow.RapportsTravail.Query().AsNoTracking()
+            .Include(r => r.Chantier).AsQueryable();
+        if (affecte is > 0) q = q.Where(r => r.ChantierId == affecte);
+
+        var rapports = await q.OrderByDescending(r => r.PeriodeFin).Take(200).ToListAsync(ct);
         return View(rapports);
     }
 
@@ -45,6 +59,10 @@ public class RapportsTravailController : Controller
             .Include(r => r.LignesEquipements)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
         if (rapport is null) return NotFound();
+
+        var affecteDetails = await ChantierAffecteAsync();
+        if (affecteDetails is > 0 && rapport.ChantierId != affecteDetails) return Forbid();
+
         return View(rapport);
     }
 

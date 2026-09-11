@@ -3,8 +3,10 @@ using ETAM.Application.Interfaces;
 using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
+using ETAM.Infrastructure.Identity;
 using ETAM.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,20 +18,49 @@ public class ApprovisionnementController : Controller
     private readonly IUnitOfWork _uow;
     private readonly IPrevisionService _prevision;
     private readonly IReferenceDataCache _referenceData;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public ApprovisionnementController(IUnitOfWork uow, IPrevisionService prevision, IReferenceDataCache referenceData)
+    public ApprovisionnementController(IUnitOfWork uow, IPrevisionService prevision,
+        IReferenceDataCache referenceData, UserManager<ApplicationUser> userManager)
     {
         _uow = uow;
         _prevision = prevision;
         _referenceData = referenceData;
+        _userManager = userManager;
+    }
+
+    /// <summary>
+    /// Chantier d'affectation de l'utilisateur. Un chef de chantier (ou un magasinier)
+    /// rattaché à un chantier ne voit QUE les bons de ce chantier.
+    /// Null = accès à tous les chantiers (Administrateur, Correspondant).
+    /// </summary>
+    private async Task<long?> ChantierAffecteAsync()
+    {
+        if (User.IsInRole("Administrateur") || User.IsInRole("Correspondant")) return null;
+        var user = await _userManager.GetUserAsync(User);
+        return user?.ChantierId;
+    }
+
+    /// <summary>Liste des chantiers proposés à la saisie, limitée au chantier d'affectation.</summary>
+    private async Task ChargerChantiersAutorisesAsync(CancellationToken ct)
+    {
+        var chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+        var affecte = await ChantierAffecteAsync();
+        ViewBag.Chantiers = affecte is > 0
+            ? chantiers.Where(c => c.Id == affecte).ToList()
+            : chantiers;
     }
 
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var appros = await _uow.Approvisionnements.Query().AsNoTracking()
+        var affecte = await ChantierAffecteAsync();
+        var q = _uow.Approvisionnements.Query().AsNoTracking()
             .Include(a => a.Chantier)
             .Include(a => a.Lignes)
-            .OrderByDescending(a => a.DateAppro).Take(200).ToListAsync(ct);
+            .AsQueryable();
+        if (affecte is > 0) q = q.Where(a => a.ChantierId == affecte);
+
+        var appros = await q.OrderByDescending(a => a.DateAppro).Take(200).ToListAsync(ct);
         return View(appros);
     }
 
@@ -39,15 +70,22 @@ public class ApprovisionnementController : Controller
             .Include(a => a.Chantier).Include(a => a.Lignes)
             .FirstOrDefaultAsync(a => a.Id == id, ct);
         if (appro is null) return NotFound();
+
+        // Un utilisateur rattaché ne consulte pas le bon d'un autre chantier, même par l'URL.
+        var affecte = await ChantierAffecteAsync();
+        if (affecte is > 0 && appro.ChantierId != affecte) return Forbid();
+
         return View(appro);
     }
 
     /// <summary>Export PDF / Excel de la liste des approvisionnements.</summary>
     public async Task<IActionResult> ExportListe(string format, CancellationToken ct)
     {
-        var data = await _uow.Approvisionnements.Query().AsNoTracking()
-            .Include(a => a.Chantier).Include(a => a.Lignes)
-            .OrderByDescending(a => a.DateAppro).Take(500).ToListAsync(ct);
+        var affecte = await ChantierAffecteAsync();
+        var qExport = _uow.Approvisionnements.Query().AsNoTracking()
+            .Include(a => a.Chantier).Include(a => a.Lignes).AsQueryable();
+        if (affecte is > 0) qExport = qExport.Where(a => a.ChantierId == affecte);
+        var data = await qExport.OrderByDescending(a => a.DateAppro).Take(500).ToListAsync(ct);
 
         var cols = new List<ColonneExport<Approvisionnement>>
         {
@@ -101,7 +139,7 @@ public class ApprovisionnementController : Controller
     [HttpGet]
     public async Task<IActionResult> Create(CancellationToken ct)
     {
-        ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+        await ChargerChantiersAutorisesAsync(ct);
         await ChargerListesAsync(ct);
         return View(new ApprovisionnementCreateDto());
     }
@@ -146,9 +184,14 @@ public class ApprovisionnementController : Controller
         if (dto.Lignes is null || dto.Lignes.Count == 0)
             ModelState.AddModelError(string.Empty, "Ajoutez au moins une ligne.");
 
+        // Verrou serveur : impossible de créer un bon pour un autre chantier que le sien.
+        var affecteCreate = await ChantierAffecteAsync();
+        if (affecteCreate is > 0 && dto.ChantierId != affecteCreate)
+            ModelState.AddModelError(string.Empty, "Vous ne pouvez créer un bon que pour votre chantier.");
+
         if (!ModelState.IsValid)
         {
-            ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+            await ChargerChantiersAutorisesAsync(ct);
             await ChargerListesAsync(ct);
             return View(dto);
         }
@@ -197,7 +240,10 @@ public class ApprovisionnementController : Controller
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+        var affecteEdit = await ChantierAffecteAsync();
+        if (affecteEdit is > 0 && appro.ChantierId != affecteEdit) return Forbid();
+
+        await ChargerChantiersAutorisesAsync(ct);
         await ChargerListesAsync(ct);
         var dto = new ApprovisionnementCreateDto
         {
@@ -227,6 +273,10 @@ public class ApprovisionnementController : Controller
             TempData["Error"] = "Cet approvisionnement est validé : il n'est plus modifiable.";
             return RedirectToAction(nameof(Details), new { id });
         }
+
+        var affecteEditPost = await ChantierAffecteAsync();
+        if (affecteEditPost is > 0 && (appro.ChantierId != affecteEditPost || dto.ChantierId != affecteEditPost))
+            return Forbid();
 
         if (dto.Lignes is null || dto.Lignes.Count == 0)
             ModelState.AddModelError(string.Empty, "Ajoutez au moins une ligne.");

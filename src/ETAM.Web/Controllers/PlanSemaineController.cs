@@ -13,7 +13,8 @@ namespace ETAM.Web.Controllers;
 /// de l'enveloppe du mois. Ce n'est qu'un plan — aucun argent n'y est engagé.
 /// Les demandes du chantier viennent ensuite s'y comparer.
 /// </summary>
-[Authorize]
+// Planification budgétaire de la semaine : direction et finance uniquement.
+[Authorize(Roles = "Administrateur,Correspondant")]
 public class PlanSemaineController : Controller
 {
     private readonly IUnitOfWork _uow;

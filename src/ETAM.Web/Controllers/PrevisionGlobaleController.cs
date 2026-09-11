@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ETAM.Web.Controllers;
 
-[Authorize]
+// Le plan du projet répartit le budget issu de « marché − bénéfice » : il reste
+// entre les mains de la direction et de la finance.
+[Authorize(Roles = "Administrateur,Correspondant")]
 public class PrevisionGlobaleController : Controller
 {
     private readonly IUnitOfWork _uow;
@@ -80,7 +82,7 @@ public class PrevisionGlobaleController : Controller
             ExportService.MimePdf, ExportService.NomFichier(nom, "pdf"));
     }
 
-    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [Authorize(Roles = "Administrateur,Correspondant")]
     [HttpGet]
     public async Task<IActionResult> Create(long? chantierId, CancellationToken ct)
     {
@@ -88,7 +90,7 @@ public class PrevisionGlobaleController : Controller
         return View(new PrevisionGlobaleCreateDto { ChantierId = chantierId ?? 0 });
     }
 
-    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [Authorize(Roles = "Administrateur,Correspondant")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(PrevisionGlobaleCreateDto dto, CancellationToken ct)
@@ -128,7 +130,7 @@ public class PrevisionGlobaleController : Controller
         return RedirectToAction(nameof(Details), new { id = prev.Id });
     }
 
-    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [Authorize(Roles = "Administrateur,Correspondant")]
     [HttpGet]
     public async Task<IActionResult> Edit(long id, CancellationToken ct)
     {
@@ -157,7 +159,7 @@ public class PrevisionGlobaleController : Controller
         return View("Create", dto);
     }
 
-    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [Authorize(Roles = "Administrateur,Correspondant")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(long id, PrevisionGlobaleCreateDto dto, CancellationToken ct)
@@ -200,7 +202,7 @@ public class PrevisionGlobaleController : Controller
 
     // --- Workflow : Chef soumet -> RF valide -> Admin valide -> Admin met en banque ---
 
-    [Authorize(Roles = "Administrateur,Correspondant,Chef de chantier")]
+    [Authorize(Roles = "Administrateur,Correspondant")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Soumettre(long id, CancellationToken ct)
