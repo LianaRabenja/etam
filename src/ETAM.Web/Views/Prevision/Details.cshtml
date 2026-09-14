@@ -154,26 +154,19 @@
     </div>
 
     <div class="col-lg-4">
-        <!-- Impact budgétaire : aide à la décision avant validation -->
-        <div class="etam-card p-4 mb-4">
-            <h6 class="fw-bold mb-3">Impact budgétaire</h6>
-            <div class="d-flex justify-content-between mb-1"><span class="small text-muted">Budget Comptes</span>
-                <span class="fw-semibold">@totalCompte.ToString("N0") Ar</span></div>
-            <div class="small mb-2 @(depasseCompte ? "text-danger" : "text-success")">
-                <i class="fa-solid @(depasseCompte ? "fa-triangle-exclamation" : "fa-check")"></i>
-                Restant après : @((bcRestant - totalCompte).ToString("N0")) Ar
+        @* Le détail « Impact budgétaire » a été retiré : il opposait le montant de la
+           prévision au budget disponible de deux manières trop proches pour être lues
+           sans erreur. Seul l'avertissement de dépassement subsiste, car il annonce
+           une conséquence réelle au moment de l'exécution. Les calculs restent faits
+           plus haut : ils alimentent le drapeau « utiliserReserve » du bouton Exécuter. *@
+        @if (depasseCompte || depasseMateriel)
+        {
+            <div class="alert alert-warning small mb-4">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                Cette prévision dépasse le budget disponible : son exécution puisera dans la réserve
+                et demandera la validation de l'Administrateur.
             </div>
-            <div class="d-flex justify-content-between mb-1"><span class="small text-muted">Budget Matériel (@Model.Chantier?.Nom)</span>
-                <span class="fw-semibold">@totalMateriel.ToString("N0") Ar</span></div>
-            <div class="small @(depasseMateriel ? "text-danger" : "text-success")">
-                <i class="fa-solid @(depasseMateriel ? "fa-triangle-exclamation" : "fa-check")"></i>
-                Restant après : @((bmRestant - totalMateriel).ToString("N0")) Ar
-            </div>
-            @if (depasseCompte || depasseMateriel)
-            {
-                <div class="alert alert-warning small mt-3 mb-0">Cette prévision dépasse un budget : l'exécution nécessitera la réserve (validation Administrateur).</div>
-            }
-        </div>
+        }
 
         <!-- Actions du workflow, selon statut et rôle -->
         <div class="etam-card p-4">
