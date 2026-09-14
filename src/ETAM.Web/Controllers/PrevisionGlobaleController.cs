@@ -32,11 +32,33 @@ public class PrevisionGlobaleController : Controller
             .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x).ToList();
     }
 
-    public async Task<IActionResult> Index(CancellationToken ct)
+
+    /// <summary>
+    /// Filtre par chantier des écrans de pilotage. Cet écran est réservé à la direction
+    /// et à la finance : pas de verrouillage, seulement un choix — ou la vue d'ensemble.
+    /// </summary>
+    private async Task<long?> PreparerFiltreChantierAsync(long? chantierId, CancellationToken ct)
     {
-        var previsions = await _uow.PrevisionsGlobales.Query().AsNoTracking()
-            .Include(p => p.Chantier).Include(p => p.Lignes)
-            .OrderByDescending(p => p.DateCreation).Take(200).ToListAsync(ct);
+        ViewBag.ChantierVerrouille = false;
+        ViewBag.Chantiers = await _uow.Chantiers.Query().AsNoTracking()
+            .OrderBy(c => c.Nom).ToListAsync(ct);
+        ViewBag.ChantierFiltre = chantierId;
+        ViewBag.ChantierNom = chantierId is > 0
+            ? (await _uow.Chantiers.GetByIdAsync(chantierId.Value, ct))?.Nom
+            : null;
+        return chantierId is > 0 ? chantierId : null;
+    }
+
+    public async Task<IActionResult> Index(long? chantierId, CancellationToken ct)
+    {
+        var filtre = await PreparerFiltreChantierAsync(chantierId, ct);
+
+        var q = _uow.PrevisionsGlobales.Query().AsNoTracking()
+            .Include(p => p.Chantier).Include(p => p.Lignes).AsQueryable();
+        if (filtre is > 0) q = q.Where(p => p.ChantierId == filtre);
+
+        var previsions = await q.OrderByDescending(p => p.DateCreation)
+            .Take(filtre is > 0 ? 300 : 500).ToListAsync(ct);
         return View(previsions);
     }
 

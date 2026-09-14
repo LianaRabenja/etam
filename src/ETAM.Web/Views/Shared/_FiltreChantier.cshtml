@@ -1,0 +1,36 @@
+@* ---------------------------------------------------------------------------
+   Sélecteur de chantier commun aux écrans de pilotage.
+   Au-delà de quelques chantiers, une liste « tous chantiers mélangés » devient
+   illisible et bute sur la limite d'affichage. Ce filtre y répond.
+   Un utilisateur rattaché à un chantier (chef, magasinier) n'a rien à choisir :
+   on affiche simplement le nom de son chantier.
+   --------------------------------------------------------------------------- *@
+@{
+    var lstChantiers = ViewBag.Chantiers as IEnumerable<ETAM.Domain.Entities.Chantier>;
+    long? idChantierFiltre = ViewBag.ChantierFiltre;
+    var nomChantierFiltre = ViewBag.ChantierNom as string;
+    var chantierFige = ViewBag.ChantierVerrouille as bool? ?? false;
+}
+@if (chantierFige)
+{
+    <div class="d-flex align-items-center text-muted small mb-3">
+        <i class="fa-solid fa-helmet-safety me-2"></i><strong>@nomChantierFiltre</strong>
+    </div>
+}
+else if (lstChantiers != null && lstChantiers.Any())
+{
+    <form method="get" class="etam-card p-2 px-3 mb-3 d-flex align-items-center gap-2">
+        <label class="form-label mb-0 small fw-semibold text-nowrap">Chantier</label>
+        <select name="chantierId" class="form-select form-select-sm" onchange="this.form.submit()" style="max-width:380px">
+            <option value="">Tous les chantiers</option>
+            @foreach (var ch in lstChantiers)
+            {
+                <option value="@ch.Id" selected="@(idChantierFiltre == ch.Id)">@ch.Nom (@ch.Code)</option>
+            }
+        </select>
+        @if (idChantierFiltre is > 0)
+        {
+            <a href="?" class="btn btn-sm btn-light text-nowrap">Tout voir</a>
+        }
+    </form>
+}

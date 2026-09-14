@@ -6,6 +6,7 @@
     var totalDistribue = (decimal)(ViewBag.TotalDistribue ?? 0m);
     var enMain = totalRemis - totalDistribue;
 }
+<partial name="_FiltreChantier" />
 
 @functions {
     string LibelleMode(ModePaiement? m) => m switch

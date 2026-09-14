@@ -1,21 +1,8 @@
-using AutoMapper;
-using ETAM.Application.DTOs;
-using ETAM.Domain.Entities;
-
-namespace ETAM.Application.Common.Mappings;
-
-/// <summary>Profil AutoMapper Domain &lt;-&gt; DTO.</summary>
-public class MappingProfile : Profile
-{
-    public MappingProfile()
-    {
-        CreateMap<Chantier, ChantierDto>();
-        CreateMap<ChantierCreateDto, Chantier>();
-
-        CreateMap<PrevisionJournaliere, PrevisionDto>()
-            .ForMember(d => d.ChantierNom, o => o.MapFrom(s => s.Chantier != null ? s.Chantier.Nom : null))
-            .ForMember(d => d.Total, o => o.MapFrom(s => s.Total));
-        CreateMap<PrevisionLigne, PrevisionLigneDto>()
-            .ForMember(d => d.Total, o => o.MapFrom(s => s.Total));
-    }
-}
+// Ce fichier ne contient plus de code.
+//
+// Il hébergeait le profil AutoMapper. La bibliothèque a été retirée du projet :
+// elle n'assurait que deux conversions, portait une vulnérabilité connue
+// (GHSA-rvv3-g6hj-g44x) et son éditeur est passé à un modèle de licence commercial.
+// Les conversions sont désormais écrites à la main dans ChantierMappings.cs.
+//
+// Ce fichier peut être supprimé sans conséquence.

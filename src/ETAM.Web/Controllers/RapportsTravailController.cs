@@ -39,14 +39,42 @@ public class RapportsTravailController : Controller
         return user?.ChantierId;
     }
 
-    public async Task<IActionResult> Index(CancellationToken ct)
+    /// <summary>
+    /// Prépare le filtre par chantier des écrans de pilotage.
+    /// Un utilisateur rattaché (chef, magasinier) est figé sur son chantier ;
+    /// la direction choisit, ou garde la vue d'ensemble.
+    /// </summary>
+    private async Task<long?> PreparerFiltreChantierAsync(long? chantierId, long? affecte, CancellationToken ct)
     {
-        var affecte = await ChantierAffecteAsync();
+        if (affecte is > 0)
+        {
+            ViewBag.ChantierVerrouille = true;
+            ViewBag.ChantierFiltre = affecte;
+            ViewBag.ChantierNom = (await _uow.Chantiers.GetByIdAsync(affecte.Value, ct))?.Nom;
+            return affecte;
+        }
+
+        ViewBag.ChantierVerrouille = false;
+        ViewBag.Chantiers = await _uow.Chantiers.Query().AsNoTracking()
+            .OrderBy(c => c.Nom).ToListAsync(ct);
+        ViewBag.ChantierFiltre = chantierId;
+        ViewBag.ChantierNom = chantierId is > 0
+            ? (await _uow.Chantiers.GetByIdAsync(chantierId.Value, ct))?.Nom
+            : null;
+        return chantierId is > 0 ? chantierId : null;
+    }
+
+
+    public async Task<IActionResult> Index(long? chantierId, CancellationToken ct)
+    {
+        var filtre = await PreparerFiltreChantierAsync(chantierId, await ChantierAffecteAsync(), ct);
+
         var q = _uow.RapportsTravail.Query().AsNoTracking()
             .Include(r => r.Chantier).AsQueryable();
-        if (affecte is > 0) q = q.Where(r => r.ChantierId == affecte);
+        if (filtre is > 0) q = q.Where(r => r.ChantierId == filtre);
 
-        var rapports = await q.OrderByDescending(r => r.PeriodeFin).Take(200).ToListAsync(ct);
+        var rapports = await q.OrderByDescending(r => r.PeriodeFin)
+            .Take(filtre is > 0 ? 300 : 500).ToListAsync(ct);
         return View(rapports);
     }
 

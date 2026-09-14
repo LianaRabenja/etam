@@ -40,4 +40,18 @@ public class BudgetCompte : BaseEntity
 
     /// <summary>Budget réel encore disponible = transféré depuis la banque − consommé.</summary>
     public decimal DisponibleReel => MontantTransfere - MontantConsomme;
+
+    /// <summary>Part du solde bancaire déjà réservée à ce budget. Jamais négative.</summary>
+    public decimal MontantReserve => DisponibleReel > 0 ? DisponibleReel : 0m;
+
+    /// <summary>
+    /// Ce qu'on peut encore flécher vers ce budget, pour un solde bancaire donné.
+    /// Même règle que pour le Budget Matériel d'un chantier : le fléchage réserve,
+    /// il ne retire pas. Voir Chantier.DisponibleAFlecher.
+    /// </summary>
+    public decimal DisponibleAFlecher(decimal soldeBancaire)
+    {
+        var dispo = soldeBancaire - MontantReserve;
+        return dispo > 0 ? dispo : 0m;
+    }
 }

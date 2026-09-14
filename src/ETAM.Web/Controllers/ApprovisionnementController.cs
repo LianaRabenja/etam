@@ -41,6 +41,32 @@ public class ApprovisionnementController : Controller
         return user?.ChantierId;
     }
 
+    /// <summary>
+    /// Prépare le filtre par chantier des écrans de pilotage.
+    /// Un utilisateur rattaché (chef, magasinier) est figé sur son chantier ;
+    /// la direction choisit, ou garde la vue d'ensemble.
+    /// </summary>
+    private async Task<long?> PreparerFiltreChantierAsync(long? chantierId, long? affecte, CancellationToken ct)
+    {
+        if (affecte is > 0)
+        {
+            ViewBag.ChantierVerrouille = true;
+            ViewBag.ChantierFiltre = affecte;
+            ViewBag.ChantierNom = (await _uow.Chantiers.GetByIdAsync(affecte.Value, ct))?.Nom;
+            return affecte;
+        }
+
+        ViewBag.ChantierVerrouille = false;
+        ViewBag.Chantiers = await _uow.Chantiers.Query().AsNoTracking()
+            .OrderBy(c => c.Nom).ToListAsync(ct);
+        ViewBag.ChantierFiltre = chantierId;
+        ViewBag.ChantierNom = chantierId is > 0
+            ? (await _uow.Chantiers.GetByIdAsync(chantierId.Value, ct))?.Nom
+            : null;
+        return chantierId is > 0 ? chantierId : null;
+    }
+
+
     /// <summary>Liste des chantiers proposés à la saisie, limitée au chantier d'affectation.</summary>
     private async Task ChargerChantiersAutorisesAsync(CancellationToken ct)
     {
@@ -51,16 +77,18 @@ public class ApprovisionnementController : Controller
             : chantiers;
     }
 
-    public async Task<IActionResult> Index(CancellationToken ct)
+    public async Task<IActionResult> Index(long? chantierId, CancellationToken ct)
     {
-        var affecte = await ChantierAffecteAsync();
+        var filtre = await PreparerFiltreChantierAsync(chantierId, await ChantierAffecteAsync(), ct);
+
         var q = _uow.Approvisionnements.Query().AsNoTracking()
             .Include(a => a.Chantier)
             .Include(a => a.Lignes)
             .AsQueryable();
-        if (affecte is > 0) q = q.Where(a => a.ChantierId == affecte);
+        if (filtre is > 0) q = q.Where(a => a.ChantierId == filtre);
 
-        var appros = await q.OrderByDescending(a => a.DateAppro).Take(200).ToListAsync(ct);
+        var appros = await q.OrderByDescending(a => a.DateAppro)
+            .Take(filtre is > 0 ? 300 : 500).ToListAsync(ct);
         return View(appros);
     }
 

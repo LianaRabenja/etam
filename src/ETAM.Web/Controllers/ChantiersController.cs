@@ -1,4 +1,4 @@
-using AutoMapper;
+using ETAM.Application.Common.Mappings;
 using ETAM.Application.DTOs;
 using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
@@ -14,18 +14,13 @@ namespace ETAM.Web.Controllers;
 public class ChantiersController : Controller
 {
     private readonly IUnitOfWork _uow;
-    private readonly IMapper _mapper;
 
-    public ChantiersController(IUnitOfWork uow, IMapper mapper)
-    {
-        _uow = uow;
-        _mapper = mapper;
-    }
+    public ChantiersController(IUnitOfWork uow) => _uow = uow;
 
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var chantiers = await _uow.Chantiers.ListAllAsync(ct);
-        var model = _mapper.Map<List<ChantierDto>>(chantiers.OrderBy(c => c.Nom).ToList());
+        var model = chantiers.OrderBy(c => c.Nom).ToDto();
         return View(model);
     }
 
@@ -83,7 +78,7 @@ public class ChantiersController : Controller
     {
         if (!ModelState.IsValid) return View(dto);
 
-        var chantier = _mapper.Map<Chantier>(dto);
+        var chantier = dto.ToEntity();
         await _uow.Chantiers.AddAsync(chantier, ct);
         await _uow.SaveChangesAsync(ct);
 

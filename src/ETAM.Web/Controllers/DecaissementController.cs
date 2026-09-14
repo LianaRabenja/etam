@@ -34,8 +34,27 @@ public class DecaissementController : Controller
     /// une dépense, c'est un déplacement de la banque vers les mains du chef.
     /// C'est ce qui permet au reliquat de se reporter au lendemain.
     /// </summary>
-    public async Task<IActionResult> Index(long? previsionId, CancellationToken ct)
+
+    /// <summary>
+    /// Filtre par chantier des écrans de pilotage. Cet écran est réservé à la direction
+    /// et à la finance : pas de verrouillage, seulement un choix — ou la vue d'ensemble.
+    /// </summary>
+    private async Task<long?> PreparerFiltreChantierAsync(long? chantierId, CancellationToken ct)
     {
+        ViewBag.ChantierVerrouille = false;
+        ViewBag.Chantiers = await _uow.Chantiers.Query().AsNoTracking()
+            .OrderBy(c => c.Nom).ToListAsync(ct);
+        ViewBag.ChantierFiltre = chantierId;
+        ViewBag.ChantierNom = chantierId is > 0
+            ? (await _uow.Chantiers.GetByIdAsync(chantierId.Value, ct))?.Nom
+            : null;
+        return chantierId is > 0 ? chantierId : null;
+    }
+
+    public async Task<IActionResult> Index(long? previsionId, long? chantierId, CancellationToken ct)
+    {
+        var filtreChantier = await PreparerFiltreChantierAsync(chantierId, ct);
+
         // --- Les retraits : un par prévision réelle exécutée ---
         // C'est l'exécution qui fait sortir l'argent de la banque.
         var remisesQuery = _uow.Previsions.Query().AsNoTracking()
@@ -45,10 +64,12 @@ public class DecaissementController : Controller
 
         if (previsionId.HasValue)
             remisesQuery = remisesQuery.Where(p => p.Id == previsionId.Value);
+        if (filtreChantier is > 0)
+            remisesQuery = remisesQuery.Where(p => p.ChantierId == filtreChantier);
 
         var remises = await remisesQuery
             .OrderByDescending(p => p.DateExecution)
-            .Take(300)
+            .Take(filtreChantier is > 0 ? 300 : 500)
             .Select(p => new LigneSortie(
                 p.DateExecution ?? p.DatePrevision,
                 p.Chantier.Nom,
@@ -66,10 +87,12 @@ public class DecaissementController : Controller
         var paiementsQuery = _uow.Decaissements.Query().AsNoTracking().AsQueryable();
         if (previsionId.HasValue)
             paiementsQuery = paiementsQuery.Where(d => d.PrevisionJournaliereId == previsionId.Value);
+        if (filtreChantier is > 0)
+            paiementsQuery = paiementsQuery.Where(d => d.PrevisionJournaliere.ChantierId == filtreChantier);
 
         var paiements = await paiementsQuery
             .OrderByDescending(d => d.Date)
-            .Take(300)
+            .Take(filtreChantier is > 0 ? 300 : 500)
             .Select(d => new LigneSortie(
                 d.Date,
                 d.PrevisionJournaliere.Chantier.Nom,

@@ -1,6 +1,7 @@
 @model List<ETAM.Domain.Entities.PrevisionGlobale>
 @using ETAM.Domain.Enums
 @{ ViewData["Title"] = "Prévisions globales (projet)"; }
+<partial name="_FiltreChantier" />
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-muted mb-0">@Model.Count prévision(s) globale(s)</p>

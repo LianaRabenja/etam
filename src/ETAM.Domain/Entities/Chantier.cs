@@ -57,4 +57,23 @@ public class Chantier : BaseEntity
 
     /// <summary>Budget Matériel réel encore disponible = transféré depuis la banque − consommé.</summary>
     public decimal MaterielDisponible => MaterielTransfere - Consommation;
+
+    /// <summary>
+    /// Part du solde bancaire déjà réservée à ce chantier et pas encore dépensée.
+    /// Jamais négative : une consommation supérieure au fléché ne « libère » pas d'argent.
+    /// </summary>
+    public decimal MaterielReserve => MaterielDisponible > 0 ? MaterielDisponible : 0m;
+
+    /// <summary>
+    /// Ce qu'on peut encore flécher vers le Budget Matériel, pour un solde bancaire donné.
+    ///
+    /// RÈGLE CENTRALE : le fléchage ne sort pas l'argent de la banque, il le réserve.
+    /// Sans ce calcul, on pourrait flécher dix fois la même somme, puisque le solde
+    /// bancaire ne diminue pas. Seule une sortie d'argent réelle le fait baisser.
+    /// </summary>
+    public decimal DisponibleAFlecher(decimal soldeBancaire)
+    {
+        var dispo = soldeBancaire - MaterielReserve;
+        return dispo > 0 ? dispo : 0m;
+    }
 }

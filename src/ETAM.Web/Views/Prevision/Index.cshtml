@@ -3,6 +3,7 @@
    // Seuls l'Administrateur et le Correspondant valident ou exécutent : pour les autres,
    // le bouton ne doit pas promettre une action qu'ils ne peuvent pas faire.
    var peutDecider = User.IsInRole("Administrateur") || User.IsInRole("Correspondant"); }
+<partial name="_FiltreChantier" />
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-muted mb-0">@Model.Count prévision(s)</p>
     <div class="d-flex align-items-center">

@@ -293,22 +293,21 @@ public class BanquesController : Controller
     /// </summary>
     private async Task<decimal> DisponibleAFlecherAsync(CompteBancaire compte, CancellationToken ct)
     {
-        decimal dejaFleche = 0m;
-
+        // Le calcul appartient au domaine : il y est testé et ne peut pas diverger
+        // entre l'écran, la validation et l'application du fléchage.
         if (compte.Type == TypeCompteBancaire.Comptes)
         {
             var budget = (await _uow.BudgetsComptes.ListAsync(bg => bg.EstActif, ct))
                 .OrderByDescending(bg => bg.Annee).FirstOrDefault();
-            if (budget is not null) dejaFleche = budget.MontantTransfere - budget.MontantConsomme;
-        }
-        else if (compte.ChantierId.HasValue)
-        {
-            var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
-            if (chantier is not null) dejaFleche = chantier.MaterielTransfere - chantier.Consommation;
+            return budget?.DisponibleAFlecher(compte.Solde) ?? compte.Solde;
         }
 
-        if (dejaFleche < 0) dejaFleche = 0m;
-        var dispo = compte.Solde - dejaFleche;
-        return dispo > 0 ? dispo : 0m;
+        if (compte.ChantierId.HasValue)
+        {
+            var chantier = await _uow.Chantiers.GetByIdAsync(compte.ChantierId.Value, ct);
+            return chantier?.DisponibleAFlecher(compte.Solde) ?? compte.Solde;
+        }
+
+        return compte.Solde;
     }
 }
