@@ -210,8 +210,12 @@ public class PrevisionService : IPrevisionService
                         .Where(l => l.PrevisionJournaliereId == precedente.Id)
                         .SumAsync(l => (decimal?)(l.Quantite * l.PrixUnitaireEstime), ct) ?? 0m;
 
+                    // Le montant restitué se déduit comme une dépense : si la période a
+                    // été clôturée sur cette journée, l'argent est déjà retourné en
+                    // banque et le report retombe naturellement à zéro. C'est ce qui
+                    // fait repartir la semaine suivante sur une base propre.
                     var plafondPrecedent = precedente.ReportVeille + totalPrecedent;
-                    report = plafondPrecedent - precedente.MontantDecaisse;
+                    report = plafondPrecedent - precedente.MontantDecaisse - precedente.MontantRestitue;
                     if (report < 0) report = 0;
                     p.PrevisionPrecedenteId = precedente.Id;
                 }
@@ -332,6 +336,97 @@ public class PrevisionService : IPrevisionService
 
         _logger.LogInformation("Reçu de {Ref} signé par {Nom}.", p.Reference, nomSignataire);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Clôture de la période d'un chantier : le reste qui n'a pas été utilisé
+    /// retourne en banque, et la chaîne des reports s'arrête.
+    ///
+    /// C'est le geste de fin de semaine. Les journées se sont cumulées, le reste de
+    /// chacune est passé à la suivante ; à la clôture, ce qui n'a pas servi rentre
+    /// sur le compte du chantier. La période suivante repart d'une base propre :
+    /// aucun report n'est traîné d'une semaine à l'autre.
+    ///
+    /// Aucune écriture n'est faite sur l'enveloppe du mois : celle-ci ne compte que
+    /// les décaissements réels, elle est donc déjà juste.
+    /// </summary>
+    public async Task<Result<decimal>> CloturerPeriodeAsync(long chantierId, CancellationToken ct = default)
+    {
+        var chantier = await _uow.Chantiers.GetByIdAsync(chantierId, ct);
+        if (chantier is null) return Result<decimal>.Failure("Chantier introuvable.");
+
+        // La dernière journée ouverte du chantier porte tout le reste de la période :
+        // celui des journées précédentes lui a été reporté.
+        var derniere = await _uow.Previsions.Query()
+            .Include(p => p.Lignes)
+            .Where(p => p.ChantierId == chantierId
+                        && p.DateRestitution == null
+                        && (p.Statut == StatutPrevision.Executee
+                            || p.Statut == StatutPrevision.RapportSoumis
+                            || p.Statut == StatutPrevision.Cloturee))
+            .OrderByDescending(p => p.DatePrevision).ThenByDescending(p => p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (derniere is null)
+            return Result<decimal>.Failure(
+                $"Aucune période ouverte sur {chantier.Nom} : il n'y a rien à clôturer.");
+
+        var reste = derniere.Reliquat;
+        if (reste < 0) reste = 0;
+
+        var compte = await _uow.ComptesBancaires.Query()
+            .FirstOrDefaultAsync(c => c.ChantierId == chantierId && c.EstActif, ct);
+
+        if (compte is null && reste > 0)
+            return Result<decimal>.Failure(
+                $"Aucun compte bancaire actif pour {chantier.Nom} : impossible d'y remettre les {reste:N0} Ar restants.");
+
+        await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            if (reste > 0 && compte is not null)
+            {
+                compte.Solde += reste;
+                _uow.ComptesBancaires.Update(compte);
+
+                await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
+                {
+                    CompteBancaireId = compte.Id,
+                    Date = DateTime.UtcNow,
+                    Type = TypeMouvementBancaire.Depot,
+                    Montant = reste,
+                    Beneficiaire = chantier.Nom,
+                    Motif = $"Retour de caisse — clôture de période au {DateTime.UtcNow:dd/MM/yyyy} "
+                            + $"(dernière journée {derniere.Reference})",
+                    ChantierId = chantierId,
+                    EstValide = true
+                }, ct);
+            }
+
+            derniere.MontantRestitue = reste;
+            derniere.DateRestitution = DateTime.UtcNow;
+            derniere.RestitueParId = _currentUser.UserId;
+            _uow.Previsions.Update(derniere);
+
+            await _uow.SaveChangesAsync(ct);
+            await _uow.CommitAsync(ct);
+
+            await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere),
+                derniere.Id.ToString(),
+                nouvelleValeur: $"Période clôturée — {reste:N0} Ar remis en banque", ct: ct);
+
+            _logger.LogInformation(
+                "Période clôturée sur {Chantier} : {Reste} Ar remis en banque (journée {Ref}).",
+                chantier.Nom, reste, derniere.Reference);
+
+            return Result<decimal>.Success(reste);
+        }
+        catch (Exception ex)
+        {
+            await _uow.RollbackAsync(ct);
+            _logger.LogError(ex, "Échec de la clôture de période sur le chantier {Id}.", chantierId);
+            return Result<decimal>.Failure("Une erreur est survenue lors de la clôture : " + ex.Message);
+        }
     }
 
     private async Task<PrevisionJournaliere?> ChargerAsync(long id, CancellationToken ct)

@@ -23,6 +23,11 @@
         StatutPrevision.Executee when !Model.EstAccuseeReception =>
             ("Signer le reçu de l'argent remis.", "celui qui reçoit l'argent", "warning"),
 
+        // Période clôturée : l'argent est reparti en banque, plus rien à sortir.
+        // Reste le compte rendu, qui porte sur ce qui a déjà été dépensé.
+        StatutPrevision.Executee when Model.EstRestituee =>
+            ("Écrire le compte rendu des travaux.", "le Chef de chantier", "success"),
+
         StatutPrevision.Executee =>
             ("Noter les sorties d'argent, puis écrire le compte rendu.", "le Chef de chantier", "success"),
 

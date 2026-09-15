@@ -21,6 +21,7 @@ public class PrevisionJournaliereConfiguration : IEntityTypeConfiguration<Previs
         b.Property(x => x.MontantAccuse).HasColumnType("numeric(18,2)");
         b.Property(x => x.ReportVeille).HasColumnType("numeric(18,2)");
         b.Property(x => x.MontantDecaisse).HasColumnType("numeric(18,2)");
+        b.Property(x => x.MontantRestitue).HasColumnType("numeric(18,2)");
 
         b.HasOne(x => x.Chantier).WithMany(c => c.Previsions)
             .HasForeignKey(x => x.ChantierId).OnDelete(DeleteBehavior.Restrict);
@@ -45,6 +46,7 @@ public class PrevisionJournaliereConfiguration : IEntityTypeConfiguration<Previs
         b.Ignore(x => x.EstAccuseeReception);
         b.Ignore(x => x.AttendAccuseReception);
         b.Ignore(x => x.PeutDecaisser);
+        b.Ignore(x => x.EstRestituee);
     }
 }
 

@@ -84,6 +84,22 @@ public class PrevisionJournaliere : BaseEntity
     /// </summary>
     public decimal MontantDecaisse { get; set; }
 
+    // --- Clôture de la période et retour de l'argent en banque ---
+
+    /// <summary>
+    /// Montant du reste rendu à la banque à la clôture de la période (fin de semaine
+    /// en général). Tant que cette journée n'est pas clôturée, son reste se reporte
+    /// sur la journée suivante. Dès qu'elle l'est, l'argent repart en banque et la
+    /// chaîne des reports s'arrête ici : la période suivante repart de zéro.
+    /// </summary>
+    public decimal MontantRestitue { get; set; }
+
+    /// <summary>Date de la remise en banque. Nulle tant que la période est ouverte.</summary>
+    public DateTime? DateRestitution { get; set; }
+
+    /// <summary>Administrateur qui a clôturé la période et encaissé le retour.</summary>
+    public string? RestitueParId { get; set; }
+
     public ICollection<PrevisionLigne> Lignes { get; set; } = new List<PrevisionLigne>();
     public ICollection<Decaissement> Decaissements { get; set; } = new List<Decaissement>();
     public ICollection<PieceJointe> PiecesJointes { get; set; } = new List<PieceJointe>();
@@ -99,8 +115,15 @@ public class PrevisionJournaliere : BaseEntity
     /// </summary>
     public decimal PlafondDuJour => Total + ReportVeille;
 
-    /// <summary>Ce qu'il reste à dépenser sur la journée.</summary>
-    public decimal Reliquat => PlafondDuJour - MontantDecaisse;
+    /// <summary>
+    /// Ce qu'il reste à utiliser sur le chantier. Une fois la période clôturée et
+    /// l'argent remis en banque, il n'en reste plus rien : le montant restitué se
+    /// déduit au même titre que les dépenses.
+    /// </summary>
+    public decimal Reliquat => PlafondDuJour - MontantDecaisse - MontantRestitue;
+
+    /// <summary>La période a été clôturée sur cette journée : le reste est reparti en banque.</summary>
+    public bool EstRestituee => DateRestitution.HasValue;
 
     /// <summary>Part du plafond déjà consommée, pour les alertes de seuil.</summary>
     public double PourcentageDecaisse =>
@@ -116,9 +139,15 @@ public class PrevisionJournaliere : BaseEntity
     public bool AttendAccuseReception =>
         Statut == StatutPrevision.Executee && !DateAccuseReception.HasValue;
 
-    /// <summary>Des décaissements peuvent être saisis sur cette prévision.</summary>
+    /// <summary>
+    /// Des décaissements peuvent être saisis sur cette prévision. Une période clôturée
+    /// est fermée : l'argent est retourné en banque, plus rien ne peut en sortir.
+    /// </summary>
     public bool PeutDecaisser =>
-        Statut == StatutPrevision.Executee && DateAccuseReception.HasValue && Reliquat > 0;
+        Statut == StatutPrevision.Executee
+        && DateAccuseReception.HasValue
+        && !DateRestitution.HasValue
+        && Reliquat > 0;
     public bool EstModifiable =>
         Statut == StatutPrevision.Brouillon
         || Statut == StatutPrevision.Soumise

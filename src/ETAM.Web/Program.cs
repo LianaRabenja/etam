@@ -217,16 +217,25 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 // ---------- Tâche planifiée : recalcul des alertes ----------
-// Sans cela, les alertes (seuils 50 %, travaux non justifiés) ne se mettraient à jour
-// qu'au moment d'une saisie. Ici, elles sont réévaluées toutes les heures.
+// Sans cela, les alertes (paliers 50 / 80 / 90 %, travaux non justifiés) ne se
+// mettraient à jour qu'au moment d'une saisie : personne ne serait prévenu d'un
+// dépassement tant que personne n'ouvre une page. Ici, réévaluation toutes les heures.
+//
+// On passe par IRecurringJobManager, pris dans le conteneur, et NON par la classe
+// statique RecurringJob. Celle-ci s'appuie sur JobStorage.Current, qui n'est renseigné
+// qu'au démarrage du serveur Hangfire — c'est-à-dire après ce point du code. L'appel
+// statique échouait donc systématiquement, et la tâche n'était jamais planifiée.
 if (!string.IsNullOrWhiteSpace(hangfireConn))
 {
     try
     {
-        RecurringJob.AddOrUpdate<IAlerteService>(
+        var planificateur = app.Services.GetRequiredService<IRecurringJobManager>();
+        planificateur.AddOrUpdate<IAlerteService>(
             "evaluation-alertes",
             svc => svc.EvaluerAlertesAsync(CancellationToken.None),
-            Cron.Hourly);
+            Cron.Hourly());
+
+        app.Logger.LogInformation("Évaluation des alertes planifiée toutes les heures.");
     }
     catch (Exception ex)
     {

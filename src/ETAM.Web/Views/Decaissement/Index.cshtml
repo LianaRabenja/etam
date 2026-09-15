@@ -4,7 +4,10 @@
     ViewData["Title"] = "Sorties d'argent";
     var totalRemis = (decimal)(ViewBag.TotalRemis ?? 0m);
     var totalDistribue = (decimal)(ViewBag.TotalDistribue ?? 0m);
-    var enMain = totalRemis - totalDistribue;
+    // Ce qui est reparti en banque à la clôture des périodes n'est plus sur les
+    // chantiers : il se déduit comme une dépense.
+    var totalRestitue = (decimal)(ViewBag.TotalRestitue ?? 0m);
+    var reste = totalRemis - totalDistribue - totalRestitue;
 }
 <partial name="_FiltreChantier" />
 
@@ -24,12 +27,12 @@
 </div>
 
 <div class="etam-card p-3 mb-3 text-center">
-    <div class="text-muted small">Encore entre les mains des chefs</div>
-    <div class="fw-bold" style="font-size:1.8rem;color:@(enMain > 0 ? "#b45309" : "#047857")">
-        @enMain.ToString("N0") Ar
+    <div class="text-muted small">Reste à utiliser sur les chantiers</div>
+    <div class="fw-bold" style="font-size:1.8rem;color:@(reste > 0 ? "#b45309" : "#047857")">
+        @reste.ToString("N0") Ar
     </div>
     <small class="text-muted">
-        @totalRemis.ToString("N0") sortis de la banque, @totalDistribue.ToString("N0") déjà payés
+        @totalRemis.ToString("N0") sortis de la banque, @totalDistribue.ToString("N0") déjà payés@(totalRestitue > 0 ? $", {totalRestitue:N0} remis en banque" : "")
     </small>
 </div>
 

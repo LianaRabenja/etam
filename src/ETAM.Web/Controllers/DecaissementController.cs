@@ -111,6 +111,11 @@ public class DecaissementController : Controller
             .ThenByDescending(l => l.EstRemise)   // la remise d'abord, puis ses paiements
             .ToList();
 
+        // Ce qui est reparti en banque à la clôture des périodes. Sans cette
+        // déduction, le compteur « reste à utiliser » resterait surévalué du montant
+        // remis, et l'erreur s'accumulerait à chaque clôture.
+        ViewBag.TotalRestitue = await remisesQuery.SumAsync(p => (decimal?)p.MontantRestitue, ct) ?? 0m;
+
         ViewBag.PrevisionId = previsionId;
         ViewBag.TotalRemis = remises.Sum(r => r.Montant);
         ViewBag.TotalDistribue = paiements.Sum(p => p.Montant);
@@ -136,6 +141,13 @@ public class DecaissementController : Controller
         if (!p.DateAccuseReception.HasValue)
         {
             TempData["Error"] = "Le chef de chantier doit d'abord accuser réception de l'argent.";
+            return RedirectToAction("Details", "Prevision", new { id = previsionId });
+        }
+
+        if (p.EstRestituee)
+        {
+            TempData["Error"] = $"La période a été clôturée le {p.DateRestitution:dd/MM/yyyy} "
+                                + "et l'argent est retourné en banque : aucune sortie n'est possible.";
             return RedirectToAction("Details", "Prevision", new { id = previsionId });
         }
 

@@ -75,7 +75,7 @@
             @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
-            @if (isAdmin || isRF) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Prévision journalière</a></li> }
+            @if (isAdmin || isRF) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Plan de la semaine</a></li> }
             @if (voitAppro) { <li><a class="@Active("Approvisionnement")" href="/Approvisionnement/Index"><i class="fa-solid fa-cart-flatbed"></i> <b>6.</b> Demande du chantier</a></li> }
             @if (voitPrev) { <li><a class="@Active("Prevision")" href="/Prevision/Index"><i class="fa-solid fa-hand-holding-dollar"></i> <b>7.</b> Prévision réelle</a></li> }
             @if (voitPrev) { <li><a href="/Prevision/Recap"><i class="fa-solid fa-file-invoice"></i> <b>8.</b> Recap du jour</a></li> }

@@ -3,7 +3,9 @@
 @{
     var p = (ETAM.Domain.Entities.PrevisionJournaliere)ViewBag.Prevision;
     ViewData["Title"] = "Décaissement";
-    var reliquat = p.PlafondDuJour - p.MontantDecaisse;
+    // Reliquat déduit aussi ce qui a été remis en banque à la clôture de la période :
+    // recalculer « plafond moins décaissé » ici afficherait un argent qui n'existe plus.
+    var reliquat = p.Reliquat;
 }
 
 <div class="d-flex justify-content-between align-items-start mb-3">
@@ -19,7 +21,7 @@
 </div>
 
 <div class="text-center py-3 mb-3 rounded" style="background:#f0fdf4">
-    <div class="text-muted small">Argent encore en main</div>
+    <div class="text-muted small">Reste à utiliser sur le chantier</div>
     <div class="fw-bold" style="font-size:2rem;color:#047857">@reliquat.ToString("N0") Ar</div>
 </div>
 

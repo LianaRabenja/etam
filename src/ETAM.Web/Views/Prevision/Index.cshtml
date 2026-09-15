@@ -1,9 +1,212 @@
+@using ETAM.Web.Models
 @model List<ETAM.Domain.Entities.PrevisionJournaliere>
-@{ ViewData["Title"] = "Prévisions journalières";
+@{ ViewData["Title"] = "Prévision réelle";
    // Seuls l'Administrateur et le Correspondant valident ou exécutent : pour les autres,
    // le bouton ne doit pas promettre une action qu'ils ne peuvent pas faire.
-   var peutDecider = User.IsInRole("Administrateur") || User.IsInRole("Correspondant"); }
+   var peutDecider = User.IsInRole("Administrateur") || User.IsInRole("Correspondant");
+   var estAdmin = User.IsInRole("Administrateur");
+   var cumul = ViewBag.Cumul as CumulPeriode;
+   var cumuls = ViewBag.Cumuls as List<CumulPeriode>; }
 <partial name="_FiltreChantier" />
+
+@* ---- Vue d'ensemble : où en est chaque chantier avant de clôturer la semaine ---- *@
+@if (cumuls is not null && cumuls.Any())
+{
+    var totalSorti = cumuls.Sum(x => x.Sorti);
+    var totalDepense = cumuls.Sum(x => x.Depense);
+    var totalReste = cumuls.Sum(x => x.Reste);
+
+    <div class="etam-card p-4 mb-3">
+        <h6 class="mb-3">
+            Périodes en cours
+            <span class="text-muted fw-normal small">— tous les chantiers</span>
+        </h6>
+
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Chantier</th>
+                    <th>Période</th>
+                    <th class="text-end">Sorti</th>
+                    <th class="text-end">Dépensé</th>
+                    <th class="text-end">Reste</th>
+                    <th>Dernière clôture</th>
+                    @if (estAdmin) { <th style="width:150px"></th> }
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var c in cumuls)
+            {
+                var resteLigne = c.Reste.ToString("N0");
+                <tr>
+                    <td class="fw-semibold">
+                        <a asp-action="Index" asp-route-chantierId="@c.ChantierId"
+                           class="text-decoration-none">@c.ChantierNom</a>
+                        @if (c.Incoherent)
+                        {
+                            <i class="fa-solid fa-triangle-exclamation text-warning ms-1"
+                               title="Chaîne des reports incohérente — à vérifier avant de clôturer"></i>
+                        }
+                    </td>
+                    <td class="small text-muted">
+                        @if (c.Debut.HasValue)
+                        {
+                            <text>depuis le @c.Debut.Value.ToString("dd/MM") — @c.NbJournees j.</text>
+                        }
+                        else
+                        {
+                            <text>aucune journée ouverte</text>
+                        }
+                    </td>
+                    <td class="text-end">@c.Sorti.ToString("N0")</td>
+                    <td class="text-end text-danger">@c.Depense.ToString("N0")</td>
+                    <td class="text-end fw-bold"
+                        style="color:@(c.Reste > 0 ? "#047857" : "#64748b")">
+                        @c.Reste.ToString("N0")
+                    </td>
+                    <td class="small text-muted">
+                        @if (c.DerniereCloture.HasValue)
+                        {
+                            <text>
+                                @c.DerniereCloture.Value.ToString("dd/MM/yyyy") —
+                                @((c.MontantDerniereCloture ?? 0m).ToString("N0")) Ar
+                            </text>
+                        }
+                        else
+                        {
+                            <text>jamais</text>
+                        }
+                    </td>
+                    @if (estAdmin)
+                    {
+                        <td class="text-end">
+                            @if (c.PeutCloturer)
+                            {
+                                <form asp-action="CloturerPeriode" method="post" class="js-cloture">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="chantierId" value="@c.ChantierId" />
+                                    <input type="hidden" name="ensemble" value="true" />
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            data-reste="@resteLigne"
+                                            data-chantier="@c.ChantierNom">
+                                        <i class="fa-solid fa-rotate-left me-1"></i> Clôturer
+                                    </button>
+                                </form>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="2">Total</td>
+                    <td class="text-end">@totalSorti.ToString("N0")</td>
+                    <td class="text-end">@totalDepense.ToString("N0")</td>
+                    <td class="text-end" style="color:#047857">@totalReste.ToString("N0")</td>
+                    <td></td>
+                    @if (estAdmin) { <td></td> }
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+}
+
+@* ---- Un seul chantier : la carte détaillée de sa période ---- *@
+@if (cumul is not null)
+{
+    var resteAffiche = cumul.Reste.ToString("N0");
+    var largeurBarre = Math.Min(cumul.PourcentageDepense, 100)
+        .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    <div class="etam-card p-4 mb-3">
+        <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+            <div>
+                <h6 class="mb-1">
+                    Période en cours
+                    <span class="text-muted fw-normal small">
+                        @if (cumul.Debut.HasValue)
+                        {
+                            <text>— depuis le @cumul.Debut.Value.ToString("dd/MM/yyyy"), @cumul.NbJournees journée(s)</text>
+                        }
+                        else
+                        {
+                            <text>— aucune journée ouverte</text>
+                        }
+                    </span>
+                </h6>
+                @if (cumul.DerniereCloture.HasValue)
+                {
+                    <div class="text-muted small">
+                        Dernière clôture le @cumul.DerniereCloture.Value.ToString("dd/MM/yyyy") —
+                        @((cumul.MontantDerniereCloture ?? 0m).ToString("N0")) Ar remis en banque
+                    </div>
+                }
+            </div>
+
+            @if (estAdmin && cumul.PeutCloturer)
+            {
+                <form asp-action="CloturerPeriode" method="post" class="js-cloture">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="chantierId" value="@cumul.ChantierId" />
+                    <button class="btn btn-outline-primary btn-sm"
+                            data-reste="@resteAffiche"
+                            data-chantier="@cumul.ChantierNom">
+                        <i class="fa-solid fa-rotate-left me-1"></i>
+                        Clôturer et remettre le reste en banque
+                    </button>
+                </form>
+            }
+        </div>
+
+        <div class="row g-3 text-center">
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:#f8fafc">
+                    <div class="text-muted small">Sorti de la banque</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:#334155">
+                        @cumul.Sorti.ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:#fef2f2">
+                    <div class="text-muted small">Dépensé sur le chantier</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">
+                        @cumul.Depense.ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:@(cumul.Reste > 0 ? "#f0fdf4" : "#f8fafc")">
+                    <div class="text-muted small">Reste à utiliser sur le chantier</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:@(cumul.Reste > 0 ? "#047857" : "#64748b")">
+                        @cumul.Reste.ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="progress mt-3" style="height:8px">
+            <div class="progress-bar @(cumul.PourcentageDepense >= 90 ? "bg-danger" : cumul.PourcentageDepense >= 80 ? "bg-warning" : "bg-success")"
+                 role="progressbar" style="width:@largeurBarre"></div>
+        </div>
+        <div class="text-muted small mt-1">
+            @cumul.PourcentageDepense.ToString("N1") % de l'argent sorti a été dépensé
+        </div>
+
+        @if (cumul.Incoherent)
+        {
+            <div class="alert alert-warning mt-3 mb-0 py-2 small">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                La dernière journée affiche un reste de
+                @((cumul.ResteDerniereJournee ?? 0m).ToString("N0")) Ar
+                alors que le cumul donne @cumul.Reste.ToString("N0") Ar. La chaîne des reports
+                est rompue quelque part : vérifiez les journées supprimées ou non exécutées.
+            </div>
+        }
+    </div>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-muted mb-0">@Model.Count prévision(s)</p>
     <div class="d-flex align-items-center">
@@ -18,7 +221,9 @@
 <table class="table table-hover align-middle datatable">
     <thead><tr>
         <th>Référence</th><th>Chantier</th><th>Date</th><th>Statut</th>
-        <th class="text-end">Total</th><th style="width:280px">Workflow</th>
+        <th class="text-end">Total</th>
+        <th class="text-end">Cumul restant</th>
+        <th style="width:280px">Workflow</th>
     </tr></thead>
     <tbody>
     @foreach (var p in Model)
@@ -31,12 +236,27 @@
             StatutPrevision.Executee => "bg-success",
             StatutPrevision.Refusee => "bg-danger",
             _ => "bg-secondary" };
+
+        // Le cumul restant n'a de sens qu'une fois l'argent sorti de la banque. Avant
+        // l'exécution, la journée n'est qu'une demande : on laisse la case vide plutôt
+        // que d'afficher un zéro qui se lirait comme un montant réel.
+        //
+        // Ce cumul n'est pas propre à la journée : il porte tout ce qui reste de la
+        // période, puisque le reste de chaque journée est reporté sur la suivante.
+        // La ligne la plus récente donne donc le reste du chantier.
+        var ouverte = p.Statut == StatutPrevision.Executee
+                      || p.Statut == StatutPrevision.RapportSoumis
+                      || p.Statut == StatutPrevision.Cloturee;
         <tr>
             <td class="fw-semibold"><a asp-action="Details" asp-route-id="@p.Id" class="text-decoration-none">@p.Reference</a></td>
             <td>@p.Chantier?.Nom</td>
             <td>@p.DatePrevision.ToString("dd/MM/yyyy")</td>
             <td><span class="badge badge-statut @badge">@p.Statut</span></td>
             <td class="text-end">@p.Total.ToString("N0") Ar</td>
+            <td class="text-end fw-semibold"
+                style="color:@(ouverte && p.Reliquat > 0 ? "#047857" : "#64748b")">
+                @(ouverte ? p.Reliquat.ToString("N0") : "")
+            </td>
             <td class="text-end text-nowrap">
                 @{
                     var (libelle, couleur) = !peutDecider
@@ -70,6 +290,26 @@
       e.preventDefault();
       Swal.fire({title:'Confirmer ?',icon:'question',showCancelButton:true,
         confirmButtonText:'Oui',cancelButtonText:'Annuler',confirmButtonColor:'#2563eb'})
+        .then(r=>{ if(r.isConfirmed) f.submit(); });
+    });
+  });
+
+  // La clôture fait rentrer de l'argent en banque et ferme la période :
+  // on annonce le montant exact avant de laisser valider.
+  document.querySelectorAll('.js-cloture').forEach(f=>{
+    f.addEventListener('submit',e=>{
+      e.preventDefault();
+      var b = f.querySelector('button');
+      var reste = b.dataset.reste;
+      var chantier = b.dataset.chantier || 'ce chantier';
+      Swal.fire({
+        title:'Clôturer '+chantier+' ?',
+        html:'<b>'+reste+' Ar</b> vont être remis en banque.<br>'
+            +'Plus aucune sortie ne sera possible sur cette période, '
+            +'et la suivante repartira de zéro.',
+        icon:'warning', showCancelButton:true,
+        confirmButtonText:'Oui, clôturer', cancelButtonText:'Annuler',
+        confirmButtonColor:'#2563eb'})
         .then(r=>{ if(r.isConfirmed) f.submit(); });
     });
   });

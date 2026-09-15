@@ -1,6 +1,6 @@
 @model List<ETAM.Web.Controllers.JourDeLaSemaine>
 @{
-    ViewData["Title"] = "Prévision journalière";
+    ViewData["Title"] = "Plan de la semaine";
     var lundi = (DateTime)ViewBag.Lundi;
     var chantierId = ViewBag.ChantierId as long?;
     var enveloppe = ViewBag.Enveloppe as ETAM.Domain.Entities.PrevisionMensuelle;
@@ -10,7 +10,7 @@
 }
 
 <div class="mb-3">
-    <h5 class="mb-0">Prévision journalière</h5>
+    <h5 class="mb-0">Plan de la semaine</h5>
     <small class="text-muted">Ce qu'on prévoit de dépenser chaque jour. Aucun argent n'est engagé ici.</small>
 </div>
 

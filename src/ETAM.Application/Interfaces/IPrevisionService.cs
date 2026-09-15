@@ -26,4 +26,11 @@ public interface IPrevisionService
     /// Tant que ce n'est pas signé, aucun décaissement n'est autorisé.
     /// </summary>
     Task<Result> AccuserReceptionAsync(long previsionId, string nomSignataire, CancellationToken ct = default);
+
+    /// <summary>
+    /// Clôture la période en cours d'un chantier : le reste non utilisé retourne en
+    /// banque et la chaîne des reports s'arrête, pour que la période suivante reparte
+    /// de zéro. Retourne le montant effectivement remis en banque.
+    /// </summary>
+    Task<Result<decimal>> CloturerPeriodeAsync(long chantierId, CancellationToken ct = default);
 }

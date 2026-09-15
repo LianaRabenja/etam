@@ -1520,6 +1520,9 @@ namespace ETAM.Infrastructure.Migrations
                     b.Property<DateTime?>("DateRapport")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DateRestitution")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("DateSoumission")
                         .HasColumnType("timestamp with time zone");
 
@@ -1539,6 +1542,9 @@ namespace ETAM.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("MontantDecaisse")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MontantRestitue")
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("MotifRefus")
@@ -1576,6 +1582,9 @@ namespace ETAM.Infrastructure.Migrations
 
                     b.Property<decimal>("ReportVeille")
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("RestitueParId")
+                        .HasColumnType("text");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()

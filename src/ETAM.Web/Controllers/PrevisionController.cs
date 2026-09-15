@@ -4,6 +4,7 @@ using ETAM.Domain.Entities;
 using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
 using ETAM.Infrastructure.Identity;
+using ETAM.Web.Models;
 using ETAM.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -86,7 +87,169 @@ public class PrevisionController : Controller
             .OrderByDescending(p => p.DatePrevision)
             .Take(filtre is > 0 ? 300 : 500)
             .ToListAsync(ct);
+
+        await PreparerCumulsAsync(filtre, ct);
         return View(previsions);
+    }
+
+    /// <summary>
+    /// Alimente les cumuls affichés au-dessus de la liste.
+    ///
+    /// Un chantier sélectionné (ou un chef verrouillé sur le sien) : la carte détaillée
+    /// de sa période. Aucun chantier sélectionné : le tableau de tous les chantiers,
+    /// pour voir d'un coup d'œil où en est chacun avant de clôturer la semaine.
+    /// </summary>
+    private async Task PreparerCumulsAsync(long? chantierId, CancellationToken ct)
+    {
+        ViewBag.Cumul = null;
+        ViewBag.Cumuls = null;
+
+        if (chantierId is > 0)
+        {
+            ViewBag.Cumul = await CalculerCumulAsync(chantierId.Value, null, ct);
+            return;
+        }
+
+        // Vue d'ensemble : réservée à la direction. Un chef n'arrive jamais ici,
+        // il est toujours filtré sur son chantier.
+        if (!User.IsInRole("Administrateur") && !User.IsInRole("Correspondant")) return;
+
+        var chantiers = await _uow.Chantiers.Query().AsNoTracking()
+            .OrderBy(c => c.Nom)
+            .Select(c => new { c.Id, c.Nom })
+            .ToListAsync(ct);
+
+        var cumuls = new List<CumulPeriode>();
+        foreach (var c in chantiers)
+            cumuls.Add(await CalculerCumulAsync(c.Id, c.Nom, ct));
+
+        // Les chantiers sans journée ouverte ET sans clôture passée n'ont jamais rien
+        // reçu : les afficher n'apporterait que du bruit.
+        ViewBag.Cumuls = cumuls
+            .Where(x => x.NbJournees > 0 || x.DerniereCloture.HasValue)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Cumul de la PÉRIODE EN COURS d'un chantier — en pratique la semaine.
+    ///
+    /// Les journées se cumulent : le reste de l'une devient le report de la suivante.
+    /// À la clôture, le reste retourne en banque et une nouvelle période s'ouvre.
+    /// Le cumul ne remonte donc jamais plus loin que la dernière clôture : l'argent
+    /// d'avant est déjà revenu sur le compte, l'additionner n'aurait aucun sens.
+    ///
+    /// On ne fait pas la somme des restes journaliers : le reste d'une journée est
+    /// déjà compté dans le plafond de la suivante, l'additionner le compterait deux fois.
+    /// Le reste de la période, c'est « sorti de la banque moins dépensé ».
+    /// </summary>
+    private async Task<CumulPeriode> CalculerCumulAsync(long id, string? nom, CancellationToken ct)
+    {
+        nom ??= (await _uow.Chantiers.GetByIdAsync(id, ct))?.Nom ?? "";
+
+        var ouvertes = _uow.Previsions.Query().AsNoTracking()
+            .Where(p => p.ChantierId == id
+                        && (p.Statut == StatutPrevision.Executee
+                            || p.Statut == StatutPrevision.RapportSoumis
+                            || p.Statut == StatutPrevision.Cloturee));
+
+        // Borne basse : la dernière clôture du chantier.
+        var borne = await ouvertes
+            .Where(p => p.DateRestitution != null)
+            .OrderByDescending(p => p.DateRestitution)
+            .Select(p => new { p.DateRestitution, p.MontantRestitue })
+            .FirstOrDefaultAsync(ct);
+
+        // La période en cours, ce sont les journées OUVERTES APRÈS cette clôture —
+        // on se repère sur la date d'exécution, pas sur la date de la journée. Une
+        // journée antidatée, exécutée après la clôture, appartient bien à la nouvelle
+        // période : son argent est sorti de la banque après que le reste est rentré.
+        var periode = ouvertes;
+        if (borne?.DateRestitution is { } cloture)
+            periode = periode.Where(p => p.DateExecution > cloture);
+
+        // Une seule lecture des journées, une seule des lignes : la vue d'ensemble
+        // rappelle ce calcul pour chaque chantier, il ne doit pas coûter cher.
+        var journees = await periode
+            .Select(p => new
+            {
+                p.Id,
+                p.DatePrevision,
+                p.DateExecution,
+                p.ReportVeille,
+                p.MontantDecaisse,
+                p.MontantRestitue
+            })
+            .ToListAsync(ct);
+
+        var totauxLignes = await _uow.PrevisionLignes.Query().AsNoTracking()
+            .Where(l => periode.Any(p => p.Id == l.PrevisionJournaliereId))
+            .GroupBy(l => l.PrevisionJournaliereId)
+            .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Quantite * x.PrixUnitaireEstime) })
+            .ToListAsync(ct);
+
+        var sorti = totauxLignes.Sum(x => x.Total);
+        var depense = journees.Sum(j => j.MontantDecaisse);
+
+        // Un montant déjà restitué à l'intérieur de la période se déduit comme une
+        // dépense : cet argent est en banque, il n'est plus à utiliser.
+        var restitue = journees.Sum(j => j.MontantRestitue);
+
+        var reste = sorti - depense - restitue;
+        if (reste < 0) reste = 0;
+
+        // Contrôle de cohérence : le reste calculé sur le cumul doit retomber sur le
+        // reste de la dernière journée. Un écart signale une chaîne de reports rompue
+        // (journée supprimée, report non repris) et mérite une vérification.
+        var derniere = journees
+            .OrderByDescending(j => j.DatePrevision).ThenByDescending(j => j.Id)
+            .FirstOrDefault();
+
+        decimal? resteDerniereJournee = null;
+        if (derniere is not null)
+        {
+            var totalDerniere = totauxLignes.FirstOrDefault(x => x.Id == derniere.Id)?.Total ?? 0m;
+            resteDerniereJournee = derniere.ReportVeille + totalDerniere
+                                   - derniere.MontantDecaisse - derniere.MontantRestitue;
+        }
+
+        return new CumulPeriode
+        {
+            ChantierId = id,
+            ChantierNom = nom,
+            NbJournees = journees.Count,
+            Debut = journees.Count == 0 ? null : journees.Min(j => j.DatePrevision),
+            Sorti = sorti,
+            Depense = depense,
+            Reste = reste,
+            ResteDerniereJournee = resteDerniereJournee,
+            DerniereCloture = borne?.DateRestitution,
+            MontantDerniereCloture = borne?.MontantRestitue
+        };
+    }
+
+    /// <summary>
+    /// Clôture la période du chantier : le reste non utilisé retourne en banque.
+    /// Réservé à l'Administrateur — c'est un mouvement de trésorerie.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Administrateur")]
+    public async Task<IActionResult> CloturerPeriode(long chantierId, bool ensemble, CancellationToken ct)
+    {
+        var resultat = await _service.CloturerPeriodeAsync(chantierId, ct);
+
+        if (!resultat.Succeeded)
+            TempData["Error"] = resultat.Error;
+        else if (resultat.Data > 0)
+            TempData["Success"] = $"Période clôturée : {resultat.Data:N0} Ar remis en banque.";
+        else
+            TempData["Success"] = "Période clôturée. Tout avait été utilisé, rien à remettre en banque.";
+
+        // Quand la clôture part de la vue d'ensemble, on y revient : on enchaîne
+        // souvent plusieurs chantiers le même soir.
+        return ensemble
+            ? RedirectToAction(nameof(Index))
+            : RedirectToAction(nameof(Index), new { chantierId });
     }
 
     public async Task<IActionResult> Details(long id, CancellationToken ct)

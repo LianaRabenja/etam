@@ -63,8 +63,13 @@ public class DecaissementService : IDecaissementService
                 "Le chef de chantier n'a pas encore accusé réception de l'argent. " +
                 "Aucun décaissement n'est possible tant que la réception n'est pas signée.");
 
+        if (prevision.EstRestituee)
+            return Result<long>.Failure(
+                $"La période a été clôturée le {prevision.DateRestitution:dd/MM/yyyy} et l'argent " +
+                "est retourné en banque. Ouvrez une nouvelle prévision pour dépenser à nouveau.");
+
         // --- 2. Le reliquat de la journée ---
-        var reliquat = prevision.PlafondDuJour - prevision.MontantDecaisse;
+        var reliquat = prevision.Reliquat;
         if (dto.Montant > reliquat)
             return Result<long>.Failure(
                 $"Montant supérieur au reliquat de la journée. " +

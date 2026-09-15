@@ -61,7 +61,8 @@ public class PrevisionMensuelleController : Controller
             .Select(p => new JourneeDuMois(
                 p.Id, p.Reference, p.DatePrevision, p.Statut,
                 p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Quantite * l.PrixUnitaireEstime),
-                p.ReportVeille, p.MontantDecaisse, p.DateAccuseReception))
+                p.ReportVeille, p.MontantDecaisse, p.DateAccuseReception,
+                p.MontantRestitue, p.DateRestitution))
             .ToListAsync(ct);
 
         return View(m);
@@ -313,8 +314,17 @@ public class PrevisionMensuelleController : Controller
 /// <summary>Ligne d'affichage : une journée à l'intérieur d'un mois.</summary>
 public record JourneeDuMois(
     long Id, string Reference, DateTime Date, StatutPrevision Statut,
-    decimal Demande, decimal ReportVeille, decimal Decaisse, DateTime? DateAccuse)
+    decimal Demande, decimal ReportVeille, decimal Decaisse, DateTime? DateAccuse,
+    decimal Restitue, DateTime? DateRestitution)
 {
     public decimal Plafond => Demande + ReportVeille;
-    public decimal Reliquat => Plafond - Decaisse;
+
+    /// <summary>
+    /// Ce qu'il reste à utiliser. Le montant remis en banque à la clôture de la
+    /// période se déduit au même titre que les dépenses : sans lui, cet écran
+    /// continuerait d'afficher un argent qui est déjà retourné sur le compte.
+    /// </summary>
+    public decimal Reliquat => Plafond - Decaisse - Restitue;
+
+    public bool EstRestituee => DateRestitution.HasValue;
 }

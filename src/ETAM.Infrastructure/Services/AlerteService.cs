@@ -253,13 +253,17 @@ public class AlerteService : IAlerteService
                     m.ChantierId, ct);
         }
 
-        // --- 7) Prévision journalière ouverte à 50 % ---
+        // --- 7) Prévision journalière ouverte ---
         //     L'argent est déjà sorti de la banque : ce qui compte ici est la part
-        //     réellement distribuée par le chef, et ce qu'il lui reste en main.
+        //     réellement utilisée sur le chantier, et ce qu'il reste à utiliser.
+        //
+        //     Une période clôturée est exclue : son reste est retourné en banque,
+        //     alerter dessus ne ferait que polluer la cloche indéfiniment.
         var joursOuverts = await _context.Previsions
             .Include(p => p.Chantier).Include(p => p.Lignes)
-            .Where(p => p.Statut == StatutPrevision.Executee
-                     || p.Statut == StatutPrevision.RapportSoumis)
+            .Where(p => p.DateRestitution == null
+                     && (p.Statut == StatutPrevision.Executee
+                      || p.Statut == StatutPrevision.RapportSoumis))
             .ToListAsync(ct);
 
         foreach (var p in joursOuverts)
@@ -277,7 +281,7 @@ public class AlerteService : IAlerteService
                 await CreerAsync(TypeAlerte.SeuilMoitie, palierJour.Niveau,
                     $"Prévision du jour à {palierJour.Palier} % - {p.Reference}",
                     $"{p.MontantDecaisse:N0} Ar distribués sur {p.PlafondDuJour:N0} Ar " +
-                    $"le {p.DatePrevision:dd/MM/yyyy} ({nom}). Reste {p.Reliquat:N0} Ar en main.",
+                    $"le {p.DatePrevision:dd/MM/yyyy} ({nom}). Reste {p.Reliquat:N0} Ar à utiliser.",
                     p.ChantierId, ct);
         }
     }

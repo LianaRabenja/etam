@@ -8,7 +8,7 @@
 @if (Model.Statut == StatutPrevision.Executee || Model.Statut == StatutPrevision.RapportSoumis
      || Model.Statut == StatutPrevision.Cloturee)
 {
-    var reste = Model.PlafondDuJour - Model.MontantDecaisse;
+    var reste = Model.Reliquat;
     var sorties = Model.Decaissements.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToList();
 
     <div class="etam-card p-4 mb-3">
@@ -28,7 +28,7 @@
         @* ---- Le seul chiffre à retenir ---- *@
         <div class="text-center py-3 mb-3 rounded"
              style="background:@(reste > 0 ? "#f0fdf4" : "#f8fafc")">
-            <div class="text-muted small">Reste en main</div>
+            <div class="text-muted small">Reste à utiliser sur le chantier</div>
             <div class="fw-bold" style="font-size:2rem;color:@(reste > 0 ? "#047857" : "#64748b")">
                 @reste.ToString("N0") Ar
             </div>
@@ -95,10 +95,30 @@
                     <td class="text-end fw-semibold">@solde.ToString("N0")</td>
                 </tr>
             }
+
+            @if (Model.EstRestituee)
+            {
+                solde -= Model.MontantRestitue;
+                <tr class="table-light">
+                    <td class="small text-muted">@Model.DateRestitution?.ToString("dd/MM")</td>
+                    <td class="fw-semibold">Reste remis en banque — clôture de la période</td>
+                    <td></td>
+                    <td class="text-end text-primary fw-semibold">@Model.MontantRestitue.ToString("N0")</td>
+                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+                </tr>
+            }
             </tbody>
         </table>
 
-        @if (Model.EstAccuseeReception && !sorties.Any())
+        @if (Model.EstRestituee)
+        {
+            <p class="text-muted small mt-3 mb-0">
+                <i class="fa-solid fa-lock me-1"></i>
+                Période clôturée le @Model.DateRestitution?.ToString("dd/MM/yyyy") :
+                l'argent est retourné en banque, plus aucune sortie n'est possible ici.
+            </p>
+        }
+        else if (Model.EstAccuseeReception && !sorties.Any())
         {
             <p class="text-muted small mt-3 mb-0">
                 Aucune sortie notée. Cliquez sur « Noter une sortie » à chaque fois que
