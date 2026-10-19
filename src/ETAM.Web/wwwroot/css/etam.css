@@ -136,10 +136,10 @@ table.dataTable thead th,
 .auth-card{width:100%;max-width:420px;background:rgba(255,255,255,.94);
   backdrop-filter:blur(14px);border-radius:22px;padding:40px 36px;
   box-shadow:0 24px 60px rgba(0,0,0,.35)}
-.auth-logo{width:60px;height:60px;border-radius:16px;margin:0 auto 16px;
-  display:grid;place-items:center;color:#fff;font-weight:700;font-size:1.5rem;
-  background:linear-gradient(135deg,var(--etam-accent),var(--etam-accent-2));
-  box-shadow:0 8px 20px rgba(37,99,235,.45)}
+/* La carte de connexion est blanche : le logo s'y pose directement,
+   sans pastille, son texte sombre y est parfaitement lisible. */
+.auth-logo{margin:0 auto 14px;max-width:230px}
+.auth-logo img{display:block;width:100%;height:auto}
 /* ---------- Responsive (tablette) ---------- */
 @media (max-width:992px){
   .etam-sidebar{transform:translateX(-100%)}
