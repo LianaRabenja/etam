@@ -40,11 +40,9 @@
     <!-- Sidebar sombre -->
     <aside class="etam-sidebar" id="etamSidebar">
         <div class="etam-brand">
-            <div class="logo">E</div>
-            <div>
-                <div class="title">ETAM</div>
-                <div class="subtitle">Forage &amp; BTP</div>
-            </div>
+            <a href="/" class="etam-logo" title="ETAM — Forage et BTP">
+                <img src="~/img/logo-etam.png" alt="ETAM — Forage et BTP" asp-append-version="true" />
+            </a>
         </div>
         @{
             var isAdmin = User.IsInRole("Administrateur");

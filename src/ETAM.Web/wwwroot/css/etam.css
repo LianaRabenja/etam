@@ -25,9 +25,20 @@ body{
   transition:transform .25s ease;
 }
 .etam-brand{
-  display:flex;align-items:center;gap:12px;padding:20px 22px;
+  display:flex;align-items:center;gap:12px;padding:18px 20px;
   border-bottom:1px solid rgba(255,255,255,.06);
 }
+/* Le logo porte un texte sombre : posé tel quel sur la barre bleu nuit, il serait
+   illisible. On lui donne donc une pastille blanche, qui lui sert de fond. */
+.etam-logo{
+  display:block;width:100%;background:#fff;border-radius:12px;
+  padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.25);
+  transition:transform .18s ease;
+}
+.etam-logo:hover{transform:translateY(-1px)}
+.etam-logo img{display:block;width:100%;height:auto;max-height:56px;object-fit:contain}
+
+/* Ancien carré « E » — conservé au cas où le bloc réapparaîtrait ailleurs. */
 .etam-brand .logo{
   width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--etam-accent),var(--etam-accent-2));
