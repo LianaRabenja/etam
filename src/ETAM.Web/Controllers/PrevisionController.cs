@@ -460,6 +460,11 @@ public class PrevisionController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(PrevisionCreateDto dto, CancellationToken ct)
     {
+        // Sans ce contrôle, une prévision sans aucune ligne partait directement dans
+        // le service, où le parcours des lignes provoquait une erreur 500 brute.
+        if (dto.Lignes is null || dto.Lignes.Count == 0)
+            ModelState.AddModelError(string.Empty, "Ajoutez au moins une ligne à la prévision.");
+
         if (!ModelState.IsValid)
         {
             ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
@@ -470,6 +475,19 @@ public class PrevisionController : Controller
             return View(dto);
         }
         await AppliquerPrixCatalogueAsync(dto, ct);
+
+        // Les montants se contrôlent APRÈS le catalogue : une ligne peut très bien
+        // arriver sans prix et le recevoir du catalogue juste au-dessus.
+        VerifierLignes(dto);
+        if (!ModelState.IsValid)
+        {
+            ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+            await ChargerDettesAsync(ct);
+            await ChargerCatalogueAsync(ct);
+            await ChargerBlocagesAsync(ct);
+            await ChargerPostesGlobauxAsync(ct);
+            return View(dto);
+        }
 
         // BLOCAGE MÉTIER : impossible de demander une nouvelle prévision tant que les travaux
         // financés par la précédente n'ont pas été réceptionnés par l'Administrateur.
@@ -486,6 +504,44 @@ public class PrevisionController : Controller
         if (!result.Succeeded) { TempData["Error"] = result.Error; }
         else TempData["Success"] = "Prévision créée en brouillon.";
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Contrôle des montants d'une prévision, ligne par ligne.
+    ///
+    /// À appeler APRÈS l'application des prix du catalogue. Une quantité ou un prix
+    /// négatif produirait une ligne à total négatif : elle viendrait en déduction du
+    /// plafond du jour, et l'argent demandé ne correspondrait plus à la somme des
+    /// lignes. Une ligne à zéro, elle, n'est qu'une ligne oubliée.
+    /// </summary>
+    private void VerifierLignes(PrevisionCreateDto dto)
+    {
+        if (dto.Lignes is null) return;
+
+        for (var i = 0; i < dto.Lignes.Count; i++)
+        {
+            var l = dto.Lignes[i];
+            var ligne = i + 1;
+
+            if (l.Quantite <= 0)
+                ModelState.AddModelError(string.Empty,
+                    $"Ligne {ligne} « {l.Designation} » : la quantité doit être supérieure à zéro.");
+
+            if (l.PrixUnitaireEstime < 0)
+                ModelState.AddModelError(string.Empty,
+                    $"Ligne {ligne} « {l.Designation} » : le prix unitaire ne peut pas être négatif.");
+
+            if (l.Quantite > 0 && l.PrixUnitaireEstime == 0)
+                ModelState.AddModelError(string.Empty,
+                    $"Ligne {ligne} « {l.Designation} » : indiquez un prix unitaire, "
+                    + "ou choisissez une désignation du catalogue pour qu'il se remplisse tout seul.");
+        }
+
+        // Une journée ne se demande pas six mois à l'avance : c'est presque toujours
+        // une faute de frappe sur l'année, et elle fausserait le rattachement au mois.
+        if (dto.DatePrevision.Date > DateTime.UtcNow.Date.AddMonths(3))
+            ModelState.AddModelError(nameof(PrevisionCreateDto.DatePrevision),
+                "Cette date est à plus de trois mois : vérifiez l'année saisie.");
     }
 
     // --- Exports PDF / Excel ---
@@ -761,6 +817,15 @@ public class PrevisionController : Controller
 
         if (dto.Lignes is null || dto.Lignes.Count == 0)
             ModelState.AddModelError(string.Empty, "Ajoutez au moins une ligne.");
+
+        // Le chantier ne se change plus une fois la prévision partie en validation :
+        // la Finance a donné son accord POUR UN CHANTIER. Laisser le basculer ensuite,
+        // c'est faire partir l'argent ailleurs que là où il a été approuvé.
+        if (p.Statut != StatutPrevision.Brouillon && dto.ChantierId != p.ChantierId)
+            ModelState.AddModelError(nameof(PrevisionCreateDto.ChantierId),
+                "Le chantier ne peut plus être changé : cette prévision est déjà en cours de validation. "
+                + "Refusez-la et créez-en une nouvelle sur le bon chantier.");
+
         if (!ModelState.IsValid)
         {
             ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
@@ -772,6 +837,17 @@ public class PrevisionController : Controller
         }
 
         await AppliquerPrixCatalogueAsync(dto, ct);
+
+        VerifierLignes(dto);
+        if (!ModelState.IsValid)
+        {
+            ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
+            await ChargerDettesAsync(ct);
+            await ChargerCatalogueAsync(ct);
+            await ChargerPostesGlobauxAsync(ct);
+            ViewBag.PrevId = id;
+            return View(dto);
+        }
 
         p.ChantierId = dto.ChantierId;
         p.DatePrevision = dto.DatePrevision;

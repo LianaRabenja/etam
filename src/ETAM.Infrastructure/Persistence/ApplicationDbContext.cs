@@ -58,6 +58,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<MouvementBancaire> MouvementsBancaires => Set<MouvementBancaire>();
     public DbSet<Fournisseur> Fournisseurs => Set<Fournisseur>();
     public DbSet<DetteFournisseur> DettesFournisseurs => Set<DetteFournisseur>();
+    public DbSet<Banque> Banques => Set<Banque>();
     public DbSet<Approvisionnement> Approvisionnements => Set<Approvisionnement>();
     public DbSet<ApprovisionnementLigne> ApprovisionnementLignes => Set<ApprovisionnementLigne>();
     public DbSet<ArticleCatalogue> Catalogue => Set<ArticleCatalogue>();
@@ -99,6 +100,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         builder.Entity<MouvementBancaire>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<Fournisseur>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<DetteFournisseur>().HasQueryFilter(e => !e.IsDeleted);
+        builder.Entity<Banque>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<Approvisionnement>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<ApprovisionnementLigne>().HasQueryFilter(e => !e.IsDeleted);
         builder.Entity<ArticleCatalogue>().HasQueryFilter(e => !e.IsDeleted);

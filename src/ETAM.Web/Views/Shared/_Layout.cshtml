@@ -71,6 +71,7 @@
 
             @if (voitChantiers) { <li><a class="@Active("Chantiers")" href="/Chantiers/Index"><i class="fa-solid fa-helmet-safety"></i> <b>1.</b> Chantiers</a></li> }
             @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
+            @if (isAdmin) { <li><a href="/Banques/Banques" style="padding-left:46px"><i class="fa-solid fa-landmark"></i> Les banques</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Plan de la semaine</a></li> }

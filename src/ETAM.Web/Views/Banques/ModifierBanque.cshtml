@@ -1,0 +1,47 @@
+@model ETAM.Domain.Entities.Banque
+@{ ViewData["Title"] = $"Modifier {Model.Sigle}"; }
+
+<div class="etam-card p-4" style="max-width:600px">
+<form asp-action="ModifierBanque" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id" />
+    <div asp-validation-summary="All" class="text-danger small mb-2"></div>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Sigle <span class="text-danger">*</span></label>
+            <input asp-for="Sigle" class="form-control" />
+            <span asp-validation-for="Sigle" class="text-danger small"></span>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">Nom complet <span class="text-danger">*</span></label>
+            <input asp-for="Nom" class="form-control" />
+            <span asp-validation-for="Nom" class="text-danger small"></span>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">Agence</label>
+            <input asp-for="Agence" class="form-control" />
+            <span asp-validation-for="Agence" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check mb-2">
+                <input asp-for="EstActive" class="form-check-input" />
+                <label asp-for="EstActive" class="form-check-label">Proposée à la création</label>
+            </div>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Observation</label>
+            <textarea asp-for="Observation" class="form-control" rows="2"></textarea>
+        </div>
+    </div>
+    <p class="text-muted small mt-3 mb-0">
+        Renommer une banque ne touche pas aux comptes déjà ouverts : ils gardent
+        le nom enregistré au moment de leur création.
+    </p>
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i> Enregistrer</button>
+        <a asp-action="Banques" class="btn btn-light">Annuler</a>
+    </div>
+</form>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -1,0 +1,115 @@
+@model List<ETAM.Domain.Entities.Banque>
+@{
+    ViewData["Title"] = "Les banques";
+    var estAdmin = User.IsInRole("Administrateur");
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h5 class="mb-0">Les banques</h5>
+        <small class="text-muted">
+            La liste proposée à la création d'un chantier. La tenir à jour évite d'avoir
+            « BNI », « B.N.I » et « bni » dans la même base.
+        </small>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Index" class="btn btn-light btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i> Comptes bancaires
+        </a>
+        @if (estAdmin)
+        {
+            <a asp-action="CreerBanque" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-plus me-1"></i> Nouvelle banque
+            </a>
+        }
+    </div>
+</div>
+
+<div class="etam-card p-3">
+@if (!Model.Any())
+{
+    <p class="text-muted mb-0">
+        Aucune banque enregistrée. Ajoutez-en une pour qu'elle apparaisse
+        dans la liste déroulante à la création d'un chantier.
+    </p>
+}
+else
+{
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                <th style="width:110px">Sigle</th>
+                <th>Nom</th>
+                <th>Agence</th>
+                <th style="width:110px">État</th>
+                @if (estAdmin) { <th style="width:200px"></th> }
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var b in Model)
+        {
+            <tr class="@(b.EstActive ? "" : "opacity-50")">
+                <td class="fw-semibold">@b.Sigle</td>
+                <td>
+                    @b.Nom
+                    @if (!string.IsNullOrWhiteSpace(b.Observation))
+                    {
+                        <div class="small text-muted">@b.Observation</div>
+                    }
+                </td>
+                <td class="text-muted">@(string.IsNullOrWhiteSpace(b.Agence) ? "—" : b.Agence)</td>
+                <td>
+                    @if (b.EstActive)
+                    {
+                        <span class="badge bg-success">Active</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Désactivée</span>
+                    }
+                </td>
+                @if (estAdmin)
+                {
+                    <td class="text-end text-nowrap">
+                        <a asp-action="ModifierBanque" asp-route-id="@b.Id" class="btn btn-sm btn-light">
+                            <i class="fa-solid fa-pen me-1"></i> Modifier
+                        </a>
+                        <form asp-action="SupprimerBanque" asp-route-id="@b.Id" method="post"
+                              class="d-inline js-suppr-banque">
+                            @Html.AntiForgeryToken()
+                            <button class="btn btn-sm btn-outline-danger" data-sigle="@b.Sigle">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                }
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+</div>
+
+<p class="text-muted small mt-3">
+    Une banque utilisée par des comptes existants n'est jamais effacée : elle est
+    désactivée. Elle disparaît de la liste à la création d'un chantier, mais les
+    comptes déjà ouverts gardent son nom.
+</p>
+
+@section Scripts {
+<script>
+  document.querySelectorAll('.js-suppr-banque').forEach(function(f){
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      var sigle = f.querySelector('button').dataset.sigle;
+      Swal.fire({
+        title: 'Supprimer ' + sigle + ' ?',
+        text: "Si cette banque est utilisée par des comptes, elle sera simplement désactivée.",
+        icon: 'question', showCancelButton: true,
+        confirmButtonText: 'Oui', cancelButtonText: 'Annuler',
+        confirmButtonColor: '#dc3545'
+      }).then(function(r){ if (r.isConfirmed) f.submit(); });
+    });
+  });
+</script>
+}

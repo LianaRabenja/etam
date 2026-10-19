@@ -1,42 +1,69 @@
 @model ETAM.Application.DTOs.ChantierCreateDto
-@{ ViewData["Title"] = "Nouveau chantier"; }
+@{
+    ViewData["Title"] = "Nouveau chantier";
+    var banques = ViewBag.Banques as List<ETAM.Domain.Entities.Banque> ?? new();
+}
 <div class="etam-card p-4" style="max-width:720px">
 <form asp-action="Create" method="post">
-    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+    @* « All » et pas « ModelOnly » : sinon une erreur sur un montant ou une date
+       n'avait aucun endroit où s'afficher, la page se rechargeait à l'identique,
+       et on croyait l'application cassée. *@
+    <div asp-validation-summary="All" class="text-danger small mb-2"></div>
     <div class="row g-3">
         <div class="col-md-8"><label class="form-label">Nom</label>
             <input asp-for="Nom" class="form-control" /><span asp-validation-for="Nom" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Code</label>
             <input asp-for="Code" class="form-control" /><span asp-validation-for="Code" class="text-danger small"></span></div>
         <div class="col-md-6"><label class="form-label">Localisation</label>
-            <input asp-for="Localisation" class="form-control" /></div>
+            <input asp-for="Localisation" class="form-control" />
+            <span asp-validation-for="Localisation" class="text-danger small"></span></div>
         <div class="col-md-6"><label class="form-label">Responsable</label>
-            <input asp-for="Responsable" class="form-control" /></div>
+            <input asp-for="Responsable" class="form-control" />
+            <span asp-validation-for="Responsable" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Date début</label>
-            <input asp-for="DateDebut" type="date" class="form-control" /></div>
+            <input asp-for="DateDebut" type="date" class="form-control" />
+            <span asp-validation-for="DateDebut" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Date fin</label>
-            <input asp-for="DateFin" type="date" class="form-control" /></div>
+            <input asp-for="DateFin" type="date" class="form-control" />
+            <span asp-validation-for="DateFin" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Statut</label>
             <select asp-for="Statut" asp-items="Html.GetEnumSelectList<StatutChantier>()" class="form-select"></select></div>
         <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Marché</h6>
             <small class="text-muted">Le budget du projet = montant du marché − bénéfice. C'est lui que couvrira la prévision globale.</small></div>
         <div class="col-md-4"><label class="form-label">Montant du marché (Ar)</label>
-            <input asp-for="MontantMarche" id="inMarche" type="number" step="0.01" class="form-control" /></div>
+            <input asp-for="MontantMarche" id="inMarche" type="number" step="0.01" class="form-control" />
+            <span asp-validation-for="MontantMarche" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Bénéfice (Ar)</label>
-            <input asp-for="Benefice" id="inBenefice" type="number" step="0.01" class="form-control" /></div>
+            <input asp-for="Benefice" id="inBenefice" type="number" step="0.01" class="form-control" />
+            <span asp-validation-for="Benefice" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Budget projet (calculé)</label>
             <input id="inBudgetProjet" class="form-control bg-light" readonly value="0" /></div>
 
         <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Compte bancaire du chantier</h6>
             <small class="text-muted">Ce compte est créé automatiquement avec le chantier. La somme indiquée y entre à l'ouverture.</small></div>
         <div class="col-md-4"><label class="form-label">Banque</label>
-            <input asp-for="NomBanque" class="form-control" placeholder="BNI, BOA, BFV..." />
+            @if (banques.Any())
+            {
+                <select asp-for="NomBanque" class="form-select">
+                    @foreach (var b in banques)
+                    {
+                        <option value="@b.Sigle">@b.Libelle</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <input asp-for="NomBanque" class="form-control" placeholder="BNI, BOA, BFV..." />
+                <small class="text-warning">Aucune banque enregistrée — ajoutez-en dans Banques → Les banques.</small>
+            }
             <span asp-validation-for="NomBanque" class="text-danger small"></span></div>
         <div class="col-md-4"><label class="form-label">Numéro de compte</label>
-            <input asp-for="NumeroCompte" id="inNumero" class="form-control" placeholder="ex : 00012 345678 90" /></div>
-        <div class="col-md-4"><label class="form-label">Somme qui entre en banque (Ar)</label>
+            <input asp-for="NumeroCompte" id="inNumero" class="form-control" placeholder="ex : 00012 345678 90" />
+            <span asp-validation-for="NumeroCompte" class="text-danger small"></span></div>
+        <div class="col-md-4"><label class="form-label">Somme perçue (Ar)</label>
             <input asp-for="MontantEnBanque" id="inEnBanque" type="number" step="0.01" class="form-control" />
-            <small class="text-muted">Par défaut le montant du marché — corrigez si le versement est différent.</small></div>
+            <small class="text-muted">Par défaut le montant du marché — corrigez si le versement est différent.</small>
+            <span asp-validation-for="MontantEnBanque" class="text-danger small"></span></div>
         <div class="col-12"><label class="form-label">Observation</label>
             <textarea asp-for="Observation" class="form-control" rows="2"></textarea></div>
     </div>

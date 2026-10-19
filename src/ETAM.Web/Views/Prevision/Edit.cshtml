@@ -11,7 +11,7 @@
 }
 <div class="etam-card p-4">
 <form asp-action="Edit" asp-route-id="@prevId" method="post" id="formPrev">
-    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+    <div asp-validation-summary="All" class="text-danger small"></div>
     <div class="row g-3 mb-3">
         <div class="col-md-4"><label class="form-label">Chantier</label>
             <select asp-for="ChantierId" class="form-select">

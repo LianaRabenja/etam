@@ -32,6 +32,9 @@ public interface IUnitOfWork : IDisposable
     IGenericRepository<Fournisseur> Fournisseurs { get; }
     IGenericRepository<DetteFournisseur> DettesFournisseurs { get; }
 
+    /// <summary>Liste de référence des banques de la place (BNI, BOA, BFV-SG...).</summary>
+    IGenericRepository<Banque> Banques { get; }
+
     // --- Approvisionnement ---
     IGenericRepository<Approvisionnement> Approvisionnements { get; }
     IGenericRepository<ApprovisionnementLigne> ApprovisionnementLignes { get; }

@@ -82,7 +82,11 @@ public class BanquesController : Controller
         compte.Banque = model.Banque;
         compte.Numero = model.Numero;
         compte.Devise = model.Devise;
-        compte.Solde = model.Solde;
+        // Le solde N'EST PLUS modifiable ici. C'est un solde de grand livre, piloté
+        // uniquement par les mouvements. Le rendre éditable créait une perte de données :
+        // ouvrir le formulaire à 10h00 pour corriger un libellé, un mouvement arrive à
+        // 10h01, on valide à 10h02 — et le solde repartait à sa valeur de 10h00.
+        // Pour corriger un solde, passer par « Enregistrer un mouvement ».
         compte.Type = model.Type;
         compte.ChantierId = model.Type == TypeCompteBancaire.Comptes ? null : model.ChantierId;
         compte.EstActif = model.EstActif;
@@ -92,21 +96,178 @@ public class BanquesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    // FAILLE CORRIGÉE : cette action n'avait aucun contrôle de rôle, alors que ses
+    // trois voisines en portent un. Un Correspondant pouvait créer un compte avec
+    // le solde de son choix par un envoi direct — le bouton était caché, rien d'autre.
+    [Authorize(Roles = "Administrateur")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CompteBancaire model, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(model.Nom))
+            ModelState.AddModelError(nameof(CompteBancaire.Nom), "Le nom du compte est obligatoire.");
+        if (string.IsNullOrWhiteSpace(model.Banque))
+            ModelState.AddModelError(nameof(CompteBancaire.Banque), "La banque est obligatoire.");
+        if (model.Solde < 0)
+            ModelState.AddModelError(nameof(CompteBancaire.Solde), "Le solde initial ne peut pas être négatif.");
+
+        // Un compte de chantier doit être rattaché à un chantier, sinon il n'apparaît
+        // jamais dans l'écran de fléchage et reste inutilisable sans explication.
+        if (model.Type == TypeCompteBancaire.Chantier && model.ChantierId is null or 0)
+            ModelState.AddModelError(nameof(CompteBancaire.ChantierId),
+                "Un compte de type « Chantier » doit être rattaché à un chantier.");
+
         if (!ModelState.IsValid)
         {
             ViewBag.Chantiers = await _referenceData.ObtenirChantiersAsync(ct);
             return View(model);
         }
         // Un compte "Comptes" n'est pas rattaché à un chantier.
-        if (model.Type == ETAM.Domain.Enums.TypeCompteBancaire.Comptes) model.ChantierId = null;
+        if (model.Type == TypeCompteBancaire.Comptes) model.ChantierId = null;
         await _uow.ComptesBancaires.AddAsync(model, ct);
         await _uow.SaveChangesAsync(ct);
         TempData["Success"] = $"Compte « {model.Nom} » créé.";
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Supprime un compte bancaire vide — typiquement un compte devenu orphelin.
+    /// Un compte avec du solde ou des mouvements est un fait comptable : on le
+    /// désactive dans Modifier, on ne l'efface pas.
+    /// </summary>
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SupprimerCompte(long id, CancellationToken ct)
+    {
+        var compte = await _uow.ComptesBancaires.GetByIdAsync(id, ct);
+        if (compte is null) return NotFound();
+
+        if (compte.Solde != 0)
+        {
+            TempData["Error"] = $"« {compte.Nom} » porte encore {compte.Solde:N0} Ar. "
+                                + "Videz-le par un mouvement, ou désactivez-le dans Modifier.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        if (await _uow.MouvementsBancaires.AnyAsync(m => m.CompteBancaireId == id, ct))
+        {
+            TempData["Error"] = $"« {compte.Nom} » a un historique de mouvements : il ne peut pas être effacé. "
+                                + "Désactivez-le dans Modifier, son historique reste consultable.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        _uow.ComptesBancaires.Remove(compte);
+        await _uow.SaveChangesAsync(ct);
+        TempData["Success"] = $"Compte « {compte.Nom} » supprimé.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // =====================================================================
+    //  Les banques de la place : BNI, BOA, BFV-SG...
+    //  Liste de référence proposée à la création d'un chantier.
+    // =====================================================================
+
+    public async Task<IActionResult> Banques(CancellationToken ct)
+    {
+        var banques = (await _uow.Banques.ListAllAsync(ct))
+            .OrderByDescending(b => b.EstActive).ThenBy(b => b.Sigle).ToList();
+        return View(banques);
+    }
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpGet]
+    public IActionResult CreerBanque() => View(new Banque());
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreerBanque(Banque model, CancellationToken ct)
+    {
+        await VerifierBanqueAsync(model, ct);
+        if (!ModelState.IsValid) return View(model);
+
+        model.Nom = model.Nom.Trim();
+        model.Sigle = model.Sigle.Trim().ToUpperInvariant();
+        await _uow.Banques.AddAsync(model, ct);
+        await _uow.SaveChangesAsync(ct);
+        TempData["Success"] = $"Banque « {model.Sigle} » ajoutée.";
+        return RedirectToAction(nameof(Banques));
+    }
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpGet]
+    public async Task<IActionResult> ModifierBanque(long id, CancellationToken ct)
+    {
+        var banque = await _uow.Banques.GetByIdAsync(id, ct);
+        if (banque is null) return NotFound();
+        return View(banque);
+    }
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ModifierBanque(Banque model, CancellationToken ct)
+    {
+        var banque = await _uow.Banques.GetByIdAsync(model.Id, ct);
+        if (banque is null) return NotFound();
+
+        await VerifierBanqueAsync(model, ct);
+        if (!ModelState.IsValid) return View(model);
+
+        banque.Nom = model.Nom.Trim();
+        banque.Sigle = model.Sigle.Trim().ToUpperInvariant();
+        banque.Agence = model.Agence;
+        banque.EstActive = model.EstActive;
+        banque.Observation = model.Observation;
+        _uow.Banques.Update(banque);
+        await _uow.SaveChangesAsync(ct);
+        TempData["Success"] = $"Banque « {banque.Sigle} » mise à jour.";
+        return RedirectToAction(nameof(Banques));
+    }
+
+    [Authorize(Roles = "Administrateur")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SupprimerBanque(long id, CancellationToken ct)
+    {
+        var banque = await _uow.Banques.GetByIdAsync(id, ct);
+        if (banque is null) return NotFound();
+
+        // Les comptes gardent le nom de la banque en texte : supprimer la banque de
+        // la liste ne casse donc aucun compte. Mais si elle est encore utilisée, la
+        // désactiver vaut mieux que l'effacer — le nom reste cohérent dans les écrans.
+        var sigle = banque.Sigle;
+        if (await _uow.ComptesBancaires.AnyAsync(c => c.Banque == sigle, ct))
+        {
+            banque.EstActive = false;
+            _uow.Banques.Update(banque);
+            await _uow.SaveChangesAsync(ct);
+            TempData["Success"] = $"« {sigle} » est utilisée par des comptes existants : "
+                                  + "elle a été désactivée au lieu d'être supprimée. "
+                                  + "Elle n'est plus proposée à la création d'un chantier.";
+            return RedirectToAction(nameof(Banques));
+        }
+
+        _uow.Banques.Remove(banque);
+        await _uow.SaveChangesAsync(ct);
+        TempData["Success"] = $"Banque « {sigle} » supprimée.";
+        return RedirectToAction(nameof(Banques));
+    }
+
+    private async Task VerifierBanqueAsync(Banque model, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(model.Nom))
+            ModelState.AddModelError(nameof(Banque.Nom), "Le nom de la banque est obligatoire.");
+        if (string.IsNullOrWhiteSpace(model.Sigle))
+            ModelState.AddModelError(nameof(Banque.Sigle), "Le sigle est obligatoire (ex : BNI).");
+
+        if (!string.IsNullOrWhiteSpace(model.Sigle))
+        {
+            var sigle = model.Sigle.Trim().ToUpperInvariant();
+            if (await _uow.Banques.AnyAsync(b => b.Sigle == sigle && b.Id != model.Id, ct))
+                ModelState.AddModelError(nameof(Banque.Sigle), $"Le sigle « {sigle} » existe déjà.");
+        }
     }
 
     [HttpGet]

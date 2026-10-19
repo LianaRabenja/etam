@@ -35,6 +35,7 @@ public class UnitOfWork : IUnitOfWork
         MouvementsBancaires = new GenericRepository<MouvementBancaire>(context);
         Fournisseurs = new GenericRepository<Fournisseur>(context);
         DettesFournisseurs = new GenericRepository<DetteFournisseur>(context);
+        Banques = new GenericRepository<Banque>(context);
         Approvisionnements = new GenericRepository<Approvisionnement>(context);
         ApprovisionnementLignes = new GenericRepository<ApprovisionnementLigne>(context);
         Catalogue = new GenericRepository<ArticleCatalogue>(context);
@@ -66,6 +67,7 @@ public class UnitOfWork : IUnitOfWork
     public IGenericRepository<MouvementBancaire> MouvementsBancaires { get; }
     public IGenericRepository<Fournisseur> Fournisseurs { get; }
     public IGenericRepository<DetteFournisseur> DettesFournisseurs { get; }
+    public IGenericRepository<Banque> Banques { get; }
     public IGenericRepository<Approvisionnement> Approvisionnements { get; }
     public IGenericRepository<ApprovisionnementLigne> ApprovisionnementLignes { get; }
     public IGenericRepository<ArticleCatalogue> Catalogue { get; }

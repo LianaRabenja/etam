@@ -27,7 +27,10 @@
 
 <div class="etam-card p-4">
 <form asp-action="Create" method="post" id="formPrev">
-    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+    @* « All » : les erreurs de ligne (désignation vide, quantité à zéro) sont des
+       erreurs de propriété. Avec « ModelOnly » elles n'avaient nulle part où
+       s'afficher, et la page se rechargeait muette. *@
+    <div asp-validation-summary="All" class="text-danger small"></div>
     <div class="row g-3 mb-3">
         <div class="col-md-4"><label class="form-label">Chantier</label>
             <select asp-for="ChantierId" class="form-select" required>

@@ -85,7 +85,9 @@ public class PrevisionService : IPrevisionService
         await _uow.SaveChangesAsync(ct);
 
         await _alertes.CreerAsync(TypeAlerte.ValidationEnAttente, NiveauAlerte.Info,
-            "Prévision à valider", $"La prévision {p.Reference} attend la validation du Responsable Financier.", p.ChantierId, ct);
+            $"À valider par la Finance — {p.Reference}",
+            $"{p.Chantier?.Nom} — journée du {p.DatePrevision:dd/MM/yyyy}, {p.Total:N0} Ar demandés. "
+            + "En attente de la validation du Responsable Financier.", p.ChantierId, ct);
         await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(), ct: ct);
         return Result.Success();
     }
@@ -104,7 +106,9 @@ public class PrevisionService : IPrevisionService
         await _uow.SaveChangesAsync(ct);
 
         await _alertes.CreerAsync(TypeAlerte.ValidationEnAttente, NiveauAlerte.Avertissement,
-            "Validation Administrateur", $"La prévision {p.Reference} attend la validation de l'Administrateur.", p.ChantierId, ct);
+            $"À valider par l'Administrateur — {p.Reference}",
+            $"{p.Chantier?.Nom} — journée du {p.DatePrevision:dd/MM/yyyy}, {p.Total:N0} Ar. "
+            + "La Finance a donné son accord. En attente de la validation de l'Administrateur.", p.ChantierId, ct);
         await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(),
             nouvelleValeur: "ValideeResponsableFinancier", ct: ct);
         return Result.Success();
@@ -122,6 +126,17 @@ public class PrevisionService : IPrevisionService
         p.DateValidationAdmin = DateTime.UtcNow;
         _uow.Previsions.Update(p);
         await _uow.SaveChangesAsync(ct);
+
+        // Dernière étape, et la plus facile à oublier : une prévision validée ne
+        // sert à rien tant qu'elle n'est pas exécutée — c'est l'exécution qui sort
+        // l'argent de la banque. Sans cette alerte, le chantier attend sans savoir
+        // pourquoi, et personne ne voit que le geste manque.
+        await _alertes.CreerAsync(TypeAlerte.PrevisionEnAttente, NiveauAlerte.Avertissement,
+            $"À exécuter — {p.Reference}",
+            $"{p.Chantier?.Nom} — journée du {p.DatePrevision:dd/MM/yyyy}, {p.Total:N0} Ar validés. "
+            + "Exécutez la prévision pour que l'argent sorte de la banque et parte au chantier.",
+            p.ChantierId, ct);
+
         await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(),
             nouvelleValeur: "ValideeAdministrateur", ct: ct);
         return Result.Success();
