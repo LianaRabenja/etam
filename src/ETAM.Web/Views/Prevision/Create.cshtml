@@ -52,7 +52,7 @@
     <p class="small text-muted">Le prix d'un article du catalogue est verrouillé. Le poste du plan de projet se rattache tout seul dès que vous saisissez la désignation.</p>
     <table class="table table-sm align-middle" id="tblLignes">
         <thead><tr>
-            <th>Désignation</th><th>Catégorie</th><th>Type</th><th>Quantité</th>
+            <th>Désignation</th><th>Catégorie</th><th>Quantité</th>
             <th>Prix unit. estimé</th><th class="d-none">Poste prévu</th>
             <th class="d-none">Dette</th><th></th>
         </tr></thead>
@@ -103,8 +103,9 @@
     const r = `<tr>
       <td><input name="Lignes[${i}].Designation" list="listeDesignations" class="form-control form-control-sm js-des" required></td>
       <td><input name="Lignes[${i}].Categorie" list="listeCategories" class="form-control form-control-sm js-cat" required></td>
-      <td><select name="Lignes[${i}].TypeBudget" class="form-select form-select-sm">
-            <option value="0">Compte</option><option value="1">Matériel</option></select></td>
+      <!-- Tout est imputé sur le budget Matériel du chantier : le choix a été
+           retiré pour qu'une prévision ne parte jamais sur le budget Comptes. -->
+      <input type="hidden" name="Lignes[${i}].TypeBudget" value="1">
       <td><input name="Lignes[${i}].Quantite" type="number" step="0.001" class="form-control form-control-sm" value="1"></td>
       <td><input name="Lignes[${i}].PrixUnitaireEstime" type="number" step="0.01" class="form-control form-control-sm js-prix" value="0"></td>
       <td class="d-none">
@@ -117,10 +118,30 @@
       <td><button type="button" class="btn btn-sm btn-outline-danger js-del"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
     document.querySelector('#tblLignes tbody').insertAdjacentHTML('beforeend', r);
-    i++;
+    renumeroter();
   }
   document.getElementById('btnAdd').addEventListener('click', row);
-  document.addEventListener('click', e=>{ if(e.target.closest('.js-del')) e.target.closest('tr').remove(); });
+
+  // Les champs s'appellent Lignes[0], Lignes[1], Lignes[2]... et ASP.NET s'ARRÊTE
+  // au premier numéro manquant. Supprimer la ligne du milieu laissait Lignes[0] et
+  // Lignes[2] : le serveur ne recevait que Lignes[0], et tout ce qui suivait le trou
+  // disparaissait en silence. On renumérote après chaque ajout et chaque suppression.
+  function renumeroter(){
+    const lignes = document.querySelectorAll('#tblLignes tbody tr');
+    lignes.forEach((tr, n) => {
+      tr.querySelectorAll('[name^="Lignes["]').forEach(el => {
+        el.name = el.name.replace(/^Lignes\[\d+\]/, 'Lignes[' + n + ']');
+      });
+    });
+    i = lignes.length;
+  }
+
+  document.addEventListener('click', e=>{
+    if(e.target.closest('.js-del')){
+      e.target.closest('tr').remove();
+      renumeroter();
+    }
+  });
 
   // ---- Postes de la prévision globale ----
   const tousPostes = JSON.parse(document.getElementById('postesGlobaux').textContent.trim() || '[]');

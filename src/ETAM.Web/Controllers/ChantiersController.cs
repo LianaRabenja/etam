@@ -87,16 +87,16 @@ public class ChantiersController : Controller
     /// Contrôles métier communs à la création et à la modification. Ils complètent
     /// les attributs du DTO, qui ne savent pas comparer deux champs entre eux.
     /// </summary>
-    private void VerifierCoherence(DateTime debut, DateTime? fin, decimal marche, decimal benefice)
+    private void VerifierCoherence(DateTime debut, DateTime? fin, decimal marche, decimal budgetProjet)
     {
         if (fin.HasValue && fin.Value.Date < debut.Date)
             ModelState.AddModelError(nameof(ChantierCreateDto.DateFin),
                 "La date de fin ne peut pas être antérieure à la date de début.");
 
-        if (benefice > marche)
-            ModelState.AddModelError(nameof(ChantierCreateDto.Benefice),
-                $"Le bénéfice ({benefice:N0} Ar) dépasse le montant du marché ({marche:N0} Ar). "
-                + "Le budget du projet serait négatif.");
+        if (budgetProjet > marche)
+            ModelState.AddModelError(nameof(ChantierCreateDto.BudgetProjet),
+                $"Le budget du projet ({budgetProjet:N0} Ar) dépasse le montant du marché ({marche:N0} Ar). "
+                + "Le bénéfice serait négatif.");
     }
 
     [Authorize(Roles = "Administrateur,Correspondant")]
@@ -104,7 +104,11 @@ public class ChantiersController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(ChantierCreateDto dto, CancellationToken ct)
     {
-        VerifierCoherence(dto.DateDebut, dto.DateFin, dto.MontantMarche, dto.Benefice);
+        VerifierCoherence(dto.DateDebut, dto.DateFin, dto.MontantMarche, dto.BudgetProjet);
+
+        // Le bénéfice se DÉDUIT du budget projet, pas l'inverse : on raisonne à
+        // partir de ce que le chantier va coûter, pas de ce qu'on veut gagner.
+        dto.Benefice = dto.MontantMarche - dto.BudgetProjet;
 
         // Le code identifie le chantier dans toutes les références (PREV-DIEG-...).
         // Un doublon doit produire un message clair, pas une erreur 500.
@@ -203,7 +207,7 @@ public class ChantiersController : Controller
         var chantier = await _uow.Chantiers.GetByIdAsync(model.Id, ct);
         if (chantier is null) return NotFound();
 
-        VerifierCoherence(model.DateDebut, model.DateFin, chantier.MontantMarche, chantier.Benefice);
+        VerifierCoherence(model.DateDebut, model.DateFin, chantier.MontantMarche, chantier.BudgetProjet);
 
         if (model.PourcentageAvancement < 0 || model.PourcentageAvancement > 100)
             ModelState.AddModelError(nameof(Chantier.PourcentageAvancement),

@@ -1,6 +1,6 @@
 @model List<ETAM.Web.Controllers.JourDeLaSemaine>
 @{
-    ViewData["Title"] = "Plan de la semaine";
+    ViewData["Title"] = "Prévision semaine";
     var lundi = (DateTime)ViewBag.Lundi;
     var chantierId = ViewBag.ChantierId as long?;
     var enveloppe = ViewBag.Enveloppe as ETAM.Domain.Entities.PrevisionMensuelle;
@@ -10,8 +10,8 @@
 }
 
 <div class="mb-3">
-    <h5 class="mb-0">Plan de la semaine</h5>
-    <small class="text-muted">Ce qu'on prévoit de dépenser chaque jour. Aucun argent n'est engagé ici.</small>
+    <h5 class="mb-0">Prévision semaine</h5>
+    <small class="text-muted">Le détail de ce qu'on prévoit de dépenser chaque jour de la semaine. C'est la référence du cumul : la prévision réelle s'y compare.</small>
 </div>
 
 <!-- Choix du chantier et de la semaine -->
@@ -54,7 +54,7 @@ else if (enveloppe is null)
 {
     <div class="alert alert-warning">
         <strong>Pas d'enveloppe pour ce mois.</strong>
-        Créez et ouvrez l'enveloppe du mois avant d'établir la prévision de la semaine.
+        Créez et validez l'enveloppe du mois avant d'établir la prévision de la semaine.
         <a asp-controller="PrevisionMensuelle" asp-action="Create" class="alert-link">Créer l'enveloppe</a>
     </div>
 }
@@ -63,6 +63,53 @@ else
     <p class="text-muted small mb-3">
         Enveloppe de @enveloppe.Libelle : <strong>@enveloppe.EnveloppeTotale.ToString("N0") Ar</strong>
     </p>
+
+    // On est déjà dans le corps du « else » : ici le C# s'écrit directement,
+    // sans « @{ } », sinon Razor lève RZ1010.
+    var totalSorti = (decimal)(ViewBag.TotalSorti ?? 0m);
+    var resteDuPlan = (decimal)(ViewBag.ResteDuPlan ?? 0m);
+    var pctPlan = (double)(ViewBag.PourcentagePlan ?? 0d);
+    var largeurPlan = Math.Min(pctPlan, 100)
+        .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    // L'argent est utilisé dès l'exécution : la seule question qui reste est
+    // « a-t-on dépensé ce qui était écrit dans le plan ? ». C'est ce bloc.
+    <div class="etam-card p-4 mb-3">
+        <h6 class="mb-3">Prévision contre réel — semaine du @lundi.ToString("dd/MM")</h6>
+        <div class="row g-3 text-center">
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:#f8fafc">
+                    <div class="text-muted small">Prévu cette semaine</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:#334155">
+                        @totalPrevu.ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:#fef2f2">
+                    <div class="text-muted small">Dépensé (prévision réelle)</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">
+                        @totalSorti.ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="py-3 rounded" style="background:@(resteDuPlan >= 0 ? "#f0fdf4" : "#fef2f2")">
+                    <div class="text-muted small">@(resteDuPlan >= 0 ? "Reste de la prévision" : "Dépassement")</div>
+                    <div class="fw-bold" style="font-size:1.5rem;color:@(resteDuPlan >= 0 ? "#047857" : "#b91c1c")">
+                        @Math.Abs(resteDuPlan).ToString("N0") Ar
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="progress mt-3" style="height:8px">
+            <div class="progress-bar @(pctPlan > 100 ? "bg-danger" : pctPlan >= 90 ? "bg-warning" : "bg-success")"
+                 role="progressbar" style="width:@largeurPlan"></div>
+        </div>
+        <div class="text-muted small mt-1">
+            @pctPlan.ToString("N1") % de la prévision de la semaine consommée
+        </div>
+    </div>
 
     <form asp-action="Enregistrer" method="post" class="etam-card p-3">
         @Html.AntiForgeryToken()
@@ -75,7 +122,7 @@ else
                     <th style="width:150px">Jour</th>
                     <th style="width:180px">Prévu (Ar)</th>
                     <th>Ce qui est prévu de faire</th>
-                    <th class="text-end" style="width:150px">Sorti réellement</th>
+                    <th class="text-end" style="width:150px">Dépensé (réel)</th>
                     <th class="text-end" style="width:130px">Écart</th>
                     <th style="width:110px"></th>
                 </tr>

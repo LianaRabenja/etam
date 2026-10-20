@@ -2,12 +2,15 @@
 @using ETAM.Domain.Enums
 @{
     ViewData["Title"] = "Sorties d'argent";
-    var totalRemis = (decimal)(ViewBag.TotalRemis ?? 0m);
-    var totalDistribue = (decimal)(ViewBag.TotalDistribue ?? 0m);
-    // Ce qui est reparti en banque à la clôture des périodes n'est plus sur les
-    // chantiers : il se déduit comme une dépense.
-    var totalRestitue = (decimal)(ViewBag.TotalRestitue ?? 0m);
-    var reste = totalRemis - totalDistribue - totalRestitue;
+    // L'argent sort de la banque à l'exécution d'une prévision ET il est dépensé
+    // dans le même geste. Ce total EST la dépense — ce n'est pas une avance dont
+    // il resterait quelque chose.
+    var totalDepense = (decimal)(ViewBag.TotalRemis ?? 0m);
+    // Les paiements ne sortent aucun argent : ils disent à qui la dépense a servi
+    // et font descendre le stock. Ce qui n'est pas détaillé n'est pas « à utiliser »,
+    // c'est seulement une dépense dont on ne connaît pas encore le bénéficiaire.
+    var totalDetaille = (decimal)(ViewBag.TotalDistribue ?? 0m);
+    var aDetailler = totalDepense - totalDetaille;
 }
 <partial name="_FiltreChantier" />
 
@@ -27,13 +30,24 @@
 </div>
 
 <div class="etam-card p-3 mb-3 text-center">
-    <div class="text-muted small">Reste à utiliser sur les chantiers</div>
-    <div class="fw-bold" style="font-size:1.8rem;color:@(reste > 0 ? "#b45309" : "#047857")">
-        @reste.ToString("N0") Ar
+    <div class="text-muted small">Dépensé sur les chantiers</div>
+    <div class="fw-bold" style="font-size:1.8rem;color:#b91c1c">
+        @totalDepense.ToString("N0") Ar
     </div>
     <small class="text-muted">
-        @totalRemis.ToString("N0") sortis de la banque, @totalDistribue.ToString("N0") déjà payés@(totalRestitue > 0 ? $", {totalRestitue:N0} remis en banque" : "")
+        sorti de la banque à l'exécution des prévisions réelles
     </small>
+    <div class="mt-2 small">
+        <span class="text-success">@totalDetaille.ToString("N0") Ar détaillés par bénéficiaire</span>
+        @if (aDetailler > 0)
+        {
+            <span class="text-muted"> · </span>
+            <span class="text-warning">@aDetailler.ToString("N0") Ar pas encore détaillés</span>
+        }
+    </div>
+    <div class="text-muted small mt-1">
+        Le détail ne sort aucun argent : il dit à qui la dépense a servi et fait descendre le stock.
+    </div>
 </div>
 
 <div class="etam-card p-3">
@@ -60,11 +74,11 @@ else
                 <td>
                     @if (l.EstRemise)
                     {
-                        <span class="badge bg-primary">retrait</span>
+                        <span class="badge bg-danger">dépense</span>
                     }
                     else
                     {
-                        <span class="badge bg-success">sortie</span>
+                        <span class="badge bg-secondary">détail</span>
                     }
                 </td>
                 <td class="small">@l.Chantier</td>

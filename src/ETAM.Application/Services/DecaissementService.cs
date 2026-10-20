@@ -13,7 +13,7 @@ namespace ETAM.Application.Services;
 ///
 /// Chaîne de contrôles, dans l'ordre :
 ///   1. la prévision est ouverte et le chef a signé la réception de l'enveloppe
-///   2. le montant tient dans le reliquat de la journée (demandé + report de la veille)
+///   2. le montant tient dans ce qui reste à ventiler sur la journée
 ///   3. le montant tient dans l'enveloppe du mois
 ///   4. le budget concerné (Matériel du chantier ou Comptes de l'entreprise) le supporte
 ///   5. le compte bancaire est suffisamment approvisionné
@@ -65,18 +65,24 @@ public class DecaissementService : IDecaissementService
 
         if (prevision.EstRestituee)
             return Result<long>.Failure(
-                $"La période a été clôturée le {prevision.DateRestitution:dd/MM/yyyy} et l'argent " +
-                "est retourné en banque. Ouvrez une nouvelle prévision pour dépenser à nouveau.");
+                $"La semaine a été clôturée le {prevision.DateRestitution:dd/MM/yyyy} : ses comptes " +
+                "sont arrêtés et son détail ne peut plus être modifié.");
 
-        // --- 2. Le reliquat de la journée ---
-        var reliquat = prevision.Reliquat;
-        if (dto.Montant > reliquat)
+        // --- 2. Ce qui reste à ventiler sur la journée ---
+        // L'argent de la journée est sorti de la banque et dépensé dès l'exécution.
+        // Un décaissement ne sort donc plus rien : il dit À QUI et POUR QUOI la
+        // dépense du jour a servi, et fait descendre le stock. Le garde-fou est
+        // simplement qu'on ne ventile pas plus que le montant de la journée.
+        //
+        // On ne s'appuie plus sur Reliquat, qui vaut désormais zéro sur une journée
+        // exécutée : s'en servir ici refuserait tous les décaissements.
+        var aVentiler = prevision.PlafondDuJour - prevision.MontantDecaisse;
+        if (dto.Montant > aVentiler)
             return Result<long>.Failure(
-                $"Montant supérieur au reliquat de la journée. " +
-                $"Plafond du jour {prevision.PlafondDuJour:N0} Ar " +
-                $"(dont {prevision.ReportVeille:N0} Ar reportés de la veille), " +
-                $"déjà décaissé {prevision.MontantDecaisse:N0} Ar, " +
-                $"il reste {reliquat:N0} Ar.");
+                $"Montant supérieur à ce qui reste à ventiler sur la journée. " +
+                $"Montant du jour {prevision.PlafondDuJour:N0} Ar, " +
+                $"déjà ventilé {prevision.MontantDecaisse:N0} Ar, " +
+                $"il reste {aVentiler:N0} Ar.");
 
         var chantier = await _uow.Chantiers.GetByIdAsync(prevision.ChantierId, ct);
         if (chantier is null) return Result<long>.Failure("Chantier introuvable.");
@@ -88,20 +94,13 @@ public class DecaissementService : IDecaissementService
         if (compte is null) return Result<long>.Failure("Compte bancaire introuvable.");
 
         // --- 3. L'enveloppe du mois ---
+        // Elle a DÉJÀ été consommée à l'exécution de la prévision, pour la totalité
+        // de la journée. La recontrôler ici refuserait la ventilation d'un argent
+        // pourtant déjà sorti, et la reconsommer compterait la dépense deux fois.
+        // On la charge seulement pour le journal.
         PrevisionMensuelle? enveloppe = null;
         if (prevision.PrevisionMensuelleId.HasValue)
-        {
             enveloppe = await _uow.PrevisionsMensuelles.GetByIdAsync(prevision.PrevisionMensuelleId.Value, ct);
-            if (enveloppe is not null)
-            {
-                var dispoMois = enveloppe.EnveloppeTotale - enveloppe.MontantConsomme;
-                if (dto.Montant > dispoMois)
-                    return Result<long>.Failure(
-                        $"Enveloppe de {enveloppe.Libelle} épuisée : il reste {dispoMois:N0} Ar " +
-                        $"sur {enveloppe.EnveloppeTotale:N0} Ar " +
-                        $"(dont {enveloppe.ReportMoisPrecedent:N0} Ar reportés du mois précédent).");
-            }
-        }
 
         // --- 4. Le budget concerné ---
         BudgetCompte? budget = null;
@@ -169,11 +168,9 @@ public class DecaissementService : IDecaissementService
             prevision.MontantDecaisse += dto.Montant;
             _uow.Previsions.Update(prevision);
 
-            if (enveloppe is not null)
-            {
-                enveloppe.MontantConsomme += dto.Montant;
-                _uow.PrevisionsMensuelles.Update(enveloppe);
-            }
+            // L'enveloppe du mois N'EST PLUS touchée ici : elle a été consommée à
+            // l'exécution, pour la totalité de la journée. L'incrémenter de nouveau
+            // compterait la même dépense deux fois.
 
             // --- Stock : sortie proportionnelle à la part payée de la ligne ---
             if (ligne is not null && ligne.MateriauId.HasValue && ligne.Total > 0)
@@ -236,8 +233,8 @@ public class DecaissementService : IDecaissementService
             await _audit.LogAsync(TypeActionAudit.Execution, nameof(Decaissement), decaissement.Id.ToString(),
                 nouvelleValeur: $"{dto.Montant:N0} Ar à {dto.Beneficiaire} — {dto.Motif}", ct: ct);
 
-            _logger.LogInformation("Décaissement de {Montant} Ar sur {Ref} (reste {Reste} Ar).",
-                dto.Montant, prevision.Reference, reliquat - dto.Montant);
+            _logger.LogInformation("Décaissement de {Montant} Ar sur {Ref} (reste à ventiler {Reste} Ar).",
+                dto.Montant, prevision.Reference, aVentiler - dto.Montant);
 
             return Result<long>.Success(decaissement.Id);
         }
@@ -295,16 +292,9 @@ public class DecaissementService : IDecaissementService
             if (prevision.MontantDecaisse < 0) prevision.MontantDecaisse = 0;
             _uow.Previsions.Update(prevision);
 
-            if (prevision.PrevisionMensuelleId.HasValue)
-            {
-                var enveloppe = await _uow.PrevisionsMensuelles.GetByIdAsync(prevision.PrevisionMensuelleId.Value, ct);
-                if (enveloppe is not null)
-                {
-                    enveloppe.MontantConsomme -= d.Montant;
-                    if (enveloppe.MontantConsomme < 0) enveloppe.MontantConsomme = 0;
-                    _uow.PrevisionsMensuelles.Update(enveloppe);
-                }
-            }
+            // L'enveloppe du mois n'est pas rendue ici : annuler une ventilation ne
+            // fait pas revenir l'argent, qui est sorti à l'exécution. Elle ne se
+            // décharge que si la prévision elle-même est annulée.
 
             d.Observation = $"{d.Observation} | ANNULÉ le {DateTime.UtcNow:dd/MM/yyyy} par " +
                             $"{_currentUser.UserName} : {motif}";

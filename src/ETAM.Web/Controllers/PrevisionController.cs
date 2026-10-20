@@ -131,16 +131,19 @@ public class PrevisionController : Controller
     }
 
     /// <summary>
-    /// Cumul de la PÉRIODE EN COURS d'un chantier — en pratique la semaine.
+    /// Cumul de la SEMAINE EN COURS d'un chantier.
     ///
-    /// Les journées se cumulent : le reste de l'une devient le report de la suivante.
-    /// À la clôture, le reste retourne en banque et une nouvelle période s'ouvre.
-    /// Le cumul ne remonte donc jamais plus loin que la dernière clôture : l'argent
-    /// d'avant est déjà revenu sur le compte, l'additionner n'aurait aucun sens.
+    /// L'argent quitte la banque à l'exécution d'une prévision et il est dépensé à ce
+    /// moment-là : exécuté = dépensé. Il n'y a donc plus de reste à reporter d'une
+    /// journée sur l'autre, et plus de « sorti moins dépensé » à calculer — les deux
+    /// colonnes sont le même argent.
     ///
-    /// On ne fait pas la somme des restes journaliers : le reste d'une journée est
-    /// déjà compté dans le plafond de la suivante, l'additionner le compterait deux fois.
-    /// Le reste de la période, c'est « sorti de la banque moins dépensé ».
+    /// Le cumul se fait contre la PRÉVISION DE LA SEMAINE, qui tient le rôle de l'argent
+    /// réel de la semaine : reste = prévu − dépensé. Ce reste n'est jamais sorti du
+    /// compte, il n'y a donc rien à y remettre à la clôture.
+    ///
+    /// La semaine retenue est celle de la plus ancienne journée non clôturée : la même
+    /// règle que CloturerPeriodeAsync, pour que les deux écrans donnent le même chiffre.
     /// </summary>
     private async Task<CumulPeriode> CalculerCumulAsync(long id, string? nom, CancellationToken ct)
     {
@@ -152,84 +155,72 @@ public class PrevisionController : Controller
                             || p.Statut == StatutPrevision.RapportSoumis
                             || p.Statut == StatutPrevision.Cloturee));
 
-        // Borne basse : la dernière clôture du chantier.
-        var borne = await ouvertes
+        // Dernière clôture du chantier, pour l'affichage de l'historique.
+        var derniereCloture = await ouvertes
             .Where(p => p.DateRestitution != null)
             .OrderByDescending(p => p.DateRestitution)
-            .Select(p => new { p.DateRestitution, p.MontantRestitue })
+            .Select(p => p.DateRestitution)
             .FirstOrDefaultAsync(ct);
 
-        // La période en cours, ce sont les journées OUVERTES APRÈS cette clôture —
-        // on se repère sur la date d'exécution, pas sur la date de la journée. Une
-        // journée antidatée, exécutée après la clôture, appartient bien à la nouvelle
-        // période : son argent est sorti de la banque après que le reste est rentré.
-        var periode = ouvertes;
-        if (borne?.DateRestitution is { } cloture)
-            periode = periode.Where(p => p.DateExecution > cloture);
+        var premiere = await ouvertes
+            .Where(p => p.DateRestitution == null)
+            .OrderBy(p => p.DatePrevision).ThenBy(p => p.Id)
+            .Select(p => (DateTime?)p.DatePrevision)
+            .FirstOrDefaultAsync(ct);
 
-        // Une seule lecture des journées, une seule des lignes : la vue d'ensemble
-        // rappelle ce calcul pour chaque chantier, il ne doit pas coûter cher.
-        var journees = await periode
-            .Select(p => new
-            {
-                p.Id,
-                p.DatePrevision,
-                p.DateExecution,
-                p.ReportVeille,
-                p.MontantDecaisse,
-                p.MontantRestitue
-            })
-            .ToListAsync(ct);
-
-        var totauxLignes = await _uow.PrevisionLignes.Query().AsNoTracking()
-            .Where(l => periode.Any(p => p.Id == l.PrevisionJournaliereId))
-            .GroupBy(l => l.PrevisionJournaliereId)
-            .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Quantite * x.PrixUnitaireEstime) })
-            .ToListAsync(ct);
-
-        var sorti = totauxLignes.Sum(x => x.Total);
-        var depense = journees.Sum(j => j.MontantDecaisse);
-
-        // Un montant déjà restitué à l'intérieur de la période se déduit comme une
-        // dépense : cet argent est en banque, il n'est plus à utiliser.
-        var restitue = journees.Sum(j => j.MontantRestitue);
-
-        var reste = sorti - depense - restitue;
-        if (reste < 0) reste = 0;
-
-        // Contrôle de cohérence : le reste calculé sur le cumul doit retomber sur le
-        // reste de la dernière journée. Un écart signale une chaîne de reports rompue
-        // (journée supprimée, report non repris) et mérite une vérification.
-        var derniere = journees
-            .OrderByDescending(j => j.DatePrevision).ThenByDescending(j => j.Id)
-            .FirstOrDefault();
-
-        decimal? resteDerniereJournee = null;
-        if (derniere is not null)
+        // Rien d'ouvert : la dernière semaine a été clôturée et la suivante n'a pas
+        // démarré. On renvoie un cumul vide plutôt que des zéros trompeurs.
+        if (premiere is null)
         {
-            var totalDerniere = totauxLignes.FirstOrDefault(x => x.Id == derniere.Id)?.Total ?? 0m;
-            resteDerniereJournee = derniere.ReportVeille + totalDerniere
-                                   - derniere.MontantDecaisse - derniere.MontantRestitue;
+            return new CumulPeriode
+            {
+                ChantierId = id,
+                ChantierNom = nom,
+                NbJournees = 0,
+                DerniereCloture = derniereCloture
+            };
         }
+
+        var jour = premiere.Value.Date;
+        var decalage = ((int)jour.DayOfWeek + 6) % 7;
+        var lundi = DateTime.SpecifyKind(jour.AddDays(-decalage), DateTimeKind.Utc);
+        var dimanche = lundi.AddDays(6);
+
+        var semaine = ouvertes.Where(p => p.DateRestitution == null
+                                          && p.DatePrevision >= lundi
+                                          && p.DatePrevision <= dimanche);
+
+        var nbJournees = await semaine.CountAsync(ct);
+
+        // Une seule lecture des lignes : la vue d'ensemble rappelle ce calcul pour
+        // chaque chantier, il ne doit pas coûter cher.
+        var sorti = await _uow.PrevisionLignes.Query().AsNoTracking()
+            .Where(l => semaine.Any(p => p.Id == l.PrevisionJournaliereId))
+            .SumAsync(l => (decimal?)(l.Quantite * l.PrixUnitaireEstime), ct) ?? 0m;
+
+        var plan = await _uow.PlansJournaliers.Query().AsNoTracking()
+            .Where(x => x.ChantierId == id && x.Date >= lundi && x.Date <= dimanche)
+            .SumAsync(x => (decimal?)x.MontantPrevu, ct) ?? 0m;
 
         return new CumulPeriode
         {
             ChantierId = id,
             ChantierNom = nom,
-            NbJournees = journees.Count,
-            Debut = journees.Count == 0 ? null : journees.Min(j => j.DatePrevision),
+            NbJournees = nbJournees,
+            Debut = lundi,
+            PlanSemaine = plan,
             Sorti = sorti,
-            Depense = depense,
-            Reste = reste,
-            ResteDerniereJournee = resteDerniereJournee,
-            DerniereCloture = borne?.DateRestitution,
-            MontantDerniereCloture = borne?.MontantRestitue
+            // L'exécution EST la dépense : même argent, deux noms.
+            Depense = sorti,
+            Reste = plan - sorti,
+            DerniereCloture = derniereCloture
         };
     }
 
     /// <summary>
-    /// Clôture la période du chantier : le reste non utilisé retourne en banque.
-    /// Réservé à l'Administrateur — c'est un mouvement de trésorerie.
+    /// Clôture la semaine du chantier : on arrête les comptes et on constate l'écart
+    /// avec la prévision de la semaine. AUCUN mouvement bancaire : l'argent non dépensé
+    /// n'est jamais sorti du compte. Réservé à l'Administrateur.
     /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -241,9 +232,12 @@ public class PrevisionController : Controller
         if (!resultat.Succeeded)
             TempData["Error"] = resultat.Error;
         else if (resultat.Data > 0)
-            TempData["Success"] = $"Période clôturée : {resultat.Data:N0} Ar remis en banque.";
+            TempData["Success"] = $"Semaine clôturée : {resultat.Data:N0} Ar de la prévision de la semaine "
+                                  + "n'ont pas été dépensés et sont restés en banque.";
+        else if (resultat.Data < 0)
+            TempData["Success"] = $"Semaine clôturée : prévision de la semaine dépassée de {Math.Abs(resultat.Data):N0} Ar.";
         else
-            TempData["Success"] = "Période clôturée. Tout avait été utilisé, rien à remettre en banque.";
+            TempData["Success"] = "Semaine clôturée. La prévision de la semaine a été dépensée exactement.";
 
         // Quand la clôture part de la vue d'ensemble, on y revient : on enchaîne
         // souvent plusieurs chantiers le même soir.
@@ -616,6 +610,11 @@ public class PrevisionController : Controller
 
         foreach (var l in dto.Lignes)
         {
+            // Une prévision s'impute toujours sur le budget Matériel du chantier.
+            // Le choix a été retiré des écrans ; on le force aussi ici, pour qu'un
+            // formulaire modifié à la main ne puisse pas basculer sur le budget Comptes.
+            l.TypeBudget = TypeBudget.Materiel;
+
             if (string.IsNullOrWhiteSpace(l.Designation)) continue;
             if (catalogue.TryGetValue(l.Designation.Trim().ToLower(), out var prixRef))
                 l.PrixUnitaireEstime = prixRef;

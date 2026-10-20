@@ -116,13 +116,25 @@ public class PrevisionJournaliere : BaseEntity
     public decimal PlafondDuJour => Total + ReportVeille;
 
     /// <summary>
-    /// Ce qu'il reste à utiliser sur le chantier. Une fois la période clôturée et
-    /// l'argent remis en banque, il n'en reste plus rien : le montant restitué se
-    /// déduit au même titre que les dépenses.
+    /// Ce qu'il reste dehors sur cette journée.
+    ///
+    /// Vaut ZÉRO dès que la journée est exécutée : l'argent sort de la banque et il
+    /// est dépensé dans le même geste, rien ne reste entre les mains de personne.
+    /// Le reste à surveiller n'est pas ici — c'est « plan de la semaine moins
+    /// dépensé », et cet argent-là est resté en banque.
+    ///
+    /// La formule d'origine (plafond − décaissé − restitué) donnait le total de la
+    /// journée, puisque MontantDecaisse ne bouge plus : l'écran des décaissements
+    /// affichait donc tout l'historique comme « encore à utiliser ».
     /// </summary>
-    public decimal Reliquat => PlafondDuJour - MontantDecaisse - MontantRestitue;
+    public decimal Reliquat =>
+        Statut is StatutPrevision.Executee
+                or StatutPrevision.RapportSoumis
+                or StatutPrevision.Cloturee
+            ? 0m
+            : PlafondDuJour - MontantDecaisse - MontantRestitue;
 
-    /// <summary>La période a été clôturée sur cette journée : le reste est reparti en banque.</summary>
+    /// <summary>La semaine a été clôturée sur cette journée : ses comptes sont arrêtés.</summary>
     public bool EstRestituee => DateRestitution.HasValue;
 
     /// <summary>Part du plafond déjà consommée, pour les alertes de seuil.</summary>
@@ -140,14 +152,19 @@ public class PrevisionJournaliere : BaseEntity
         Statut == StatutPrevision.Executee && !DateAccuseReception.HasValue;
 
     /// <summary>
-    /// Des décaissements peuvent être saisis sur cette prévision. Une période clôturée
-    /// est fermée : l'argent est retourné en banque, plus rien ne peut en sortir.
+    /// Le détail des paiements peut encore être saisi sur cette journée.
+    ///
+    /// Les décaissements ne font plus sortir d'argent — c'est l'exécution qui le fait.
+    /// Ils ne servent plus qu'à ventiler la dépense du jour : à qui, pour quoi, et à
+    /// faire descendre le stock. On s'appuie donc sur ce qui reste à ventiler, et non
+    /// sur un reliquat de trésorerie qui n'existe plus.
+    /// Une semaine clôturée est fermée : ses comptes sont arrêtés.
     /// </summary>
     public bool PeutDecaisser =>
         Statut == StatutPrevision.Executee
         && DateAccuseReception.HasValue
         && !DateRestitution.HasValue
-        && Reliquat > 0;
+        && MontantDecaisse < PlafondDuJour;
     public bool EstModifiable =>
         Statut == StatutPrevision.Brouillon
         || Statut == StatutPrevision.Soumise

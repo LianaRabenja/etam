@@ -57,8 +57,19 @@ public class ChantierCreateDto
     [Range(1, 999999999999, ErrorMessage = "Le montant du marché doit être supérieur à zéro.")]
     public decimal MontantMarche { get; set; }
 
-    /// <summary>Bénéfice conservé (ex : 80 000 000). Le reste va au chantier.</summary>
-    [Range(0, 999999999999, ErrorMessage = "Le bénéfice ne peut pas être négatif.")]
+    /// <summary>
+    /// Budget du projet : ce qu'on se donne le droit de dépenser sur le chantier.
+    /// C'est LUI qu'on saisit — le bénéfice en est déduit (marché − budget projet),
+    /// parce qu'en pratique on raisonne à partir de ce que le chantier va coûter,
+    /// pas à partir de ce qu'on veut gagner.
+    /// </summary>
+    [Range(0, 999999999999, ErrorMessage = "Le budget du projet ne peut pas être négatif.")]
+    public decimal BudgetProjet { get; set; }
+
+    /// <summary>
+    /// Bénéfice conservé. Calculé par le contrôleur : marché − budget projet.
+    /// Ne provient pas du formulaire.
+    /// </summary>
     public decimal Benefice { get; set; }
 
     // --- Compte bancaire créé en même temps que le chantier ---

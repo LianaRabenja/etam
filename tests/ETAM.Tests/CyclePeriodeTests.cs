@@ -5,13 +5,22 @@ using Xunit;
 namespace ETAM.Tests;
 
 /// <summary>
-/// Le cycle de la caisse de chantier : les journées se cumulent, puis la période
-/// est clôturée et le reste retourne en banque.
+/// Le cycle de l'argent d'un chantier, dans sa règle actuelle :
+/// EXÉCUTER UNE PRÉVISION, C'EST DÉPENSER.
 ///
-///   Lundi 5 M demandés, 3 M dépensés        → reste 2 M
-///   Mardi 4 M demandés + 2 M reportés       → plafond 6 M
+/// L'argent quitte la banque à l'exécution et il est dépensé dans le même geste.
+/// Il ne reste donc rien entre les mains de personne : plus de reliquat journalier,
+/// plus de report d'un jour sur l'autre, plus de retour de caisse à la clôture.
+///
+/// Le cumul se fait au niveau de la SEMAINE, contre la prévision de la semaine,
+/// qui tient le rôle de l'argent réel :
+///
+///   Prévision semaine 20 M
+///   Lundi exécuté   5 M  → cumul  5 M, reste 15 M
+///   Mardi exécuté   4 M  → cumul  9 M, reste 11 M
 ///   ...
-///   Clôture : ce qui reste repart en banque → la période suivante part de zéro
+///   Clôture : on constate l'écart. Le reste n'est jamais sorti de la banque,
+///             il n'y a donc rien à y remettre.
 ///
 /// Ces règles ne sont écrites nulle part ailleurs que dans le code. Si quelqu'un les
 /// casse en modifiant autre chose, seuls ces tests l'avertiront.
@@ -20,144 +29,217 @@ namespace ETAM.Tests;
 /// </summary>
 public class CyclePeriodeTests
 {
-    /// <summary>Fabrique une journée ouverte avec une seule ligne du montant voulu.</summary>
-    private static PrevisionJournaliere Journee(decimal demande, decimal report = 0m)
+    /// <summary>Fabrique une journée exécutée avec une seule ligne du montant voulu.</summary>
+    private static PrevisionJournaliere Journee(decimal montant)
     {
         var p = new PrevisionJournaliere
         {
             Statut = StatutPrevision.Executee,
-            DateAccuseReception = DateTime.UtcNow,
-            ReportVeille = report
+            DateAccuseReception = DateTime.UtcNow
         };
         p.Lignes.Add(new PrevisionLigne
         {
             Designation = "Journée",
             Quantite = 1m,
-            PrixUnitaireEstime = demande
+            PrixUnitaireEstime = montant
         });
         return p;
     }
 
+    /// <summary>
+    /// Reproduit le calcul de PrevisionService.EvaluerPlanSemaineAsync : le palier
+    /// d'alerte atteint par la semaine. 0 = rien à signaler, 100 = dépassement.
+    /// </summary>
+    private static int Palier(decimal prevuSemaine, decimal depenseSemaine)
+    {
+        if (prevuSemaine <= 0) return 0;
+        if (depenseSemaine > prevuSemaine) return 100;
+
+        var pct = (double)(depenseSemaine / prevuSemaine) * 100d;
+        return pct >= 90 ? 90 : pct >= 80 ? 80 : 0;
+    }
+
     // ------------------------------------------------------------------
-    //  Le cumul d'un jour sur l'autre
+    //  Exécuter, c'est dépenser
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Le_reste_de_la_veille_augmente_le_plafond_du_jour()
+    public void Une_journee_executee_ne_laisse_aucun_reliquat()
     {
-        // Lundi : 5 M demandés, 3 M dépensés → il reste 2 M.
+        // 5 M demandés et exécutés : les 5 M sont sortis de la banque ET dépensés.
         var lundi = Journee(5_000_000m);
-        lundi.MontantDecaisse = 3_000_000m;
 
         Assert.Equal(5_000_000m, lundi.PlafondDuJour);
-        Assert.Equal(2_000_000m, lundi.Reliquat);
 
-        // Mardi : 4 M demandés, plus les 2 M de lundi → 6 M dépensables.
-        var mardi = Journee(4_000_000m, report: lundi.Reliquat);
-
-        Assert.Equal(6_000_000m, mardi.PlafondDuJour);
+        // Rien ne reste dehors, même si aucun décaissement n'a été saisi. C'est le
+        // cœur de la règle : l'ancien calcul renvoyait ici les 5 M, et la clôture
+        // les recréditait au compte — de l'argent inventé.
+        Assert.Equal(0m, lundi.Reliquat);
     }
 
     [Fact]
-    public void Le_cumul_de_la_periode_vaut_le_sorti_moins_le_depense()
+    public void Aucun_report_ne_se_traine_d_un_jour_sur_l_autre()
     {
-        // Trois journées : 5 + 4 + 3 M sortis de la banque, 3 + 5 + 1 M dépensés.
+        // Le lundi est exécuté, donc dépensé. Le mardi ne demande que son montant.
         var lundi = Journee(5_000_000m);
-        lundi.MontantDecaisse = 3_000_000m;
+        var mardi = Journee(4_000_000m);
 
-        var mardi = Journee(4_000_000m, report: lundi.Reliquat);
-        mardi.MontantDecaisse = 5_000_000m;
+        Assert.Equal(0m, mardi.ReportVeille);
+        Assert.Equal(4_000_000m, mardi.PlafondDuJour);
 
-        var mercredi = Journee(3_000_000m, report: mardi.Reliquat);
-        mercredi.MontantDecaisse = 1_000_000m;
+        // Le plafond du mardi ne dépend en rien du lundi : c'est ce qui empêche le
+        // plafond de s'empiler à l'infini (jour3 = jour1 + jour2 + jour3).
+        Assert.Equal(5_000_000m, lundi.PlafondDuJour);
+    }
 
-        var sorti = 5_000_000m + 4_000_000m + 3_000_000m;
-        var depense = 3_000_000m + 5_000_000m + 1_000_000m;
+    [Fact]
+    public void Une_journee_non_executee_n_a_rien_depense()
+    {
+        // Une prévision encore en brouillon n'a fait sortir aucun argent : son
+        // montant reste entièrement à engager.
+        var brouillon = Journee(5_000_000m);
+        brouillon.Statut = StatutPrevision.Brouillon;
 
-        // Le reste de la période ne s'obtient PAS en additionnant les restes
-        // journaliers : celui de lundi est déjà compté dans le plafond de mardi.
-        // Il vaut « sorti de la banque moins dépensé », et retombe exactement sur
-        // le reste de la dernière journée.
-        Assert.Equal(3_000_000m, sorti - depense);
-        Assert.Equal(sorti - depense, mercredi.Reliquat);
+        Assert.Equal(5_000_000m, brouillon.Reliquat);
     }
 
     // ------------------------------------------------------------------
-    //  La clôture de période
+    //  Le cumul de la semaine contre sa prévision
     // ------------------------------------------------------------------
 
     [Fact]
-    public void La_cloture_vide_le_reste_de_la_journee()
+    public void Le_cumul_de_la_semaine_est_la_somme_des_journees_executees()
     {
-        var vendredi = Journee(5_000_000m);
-        vendredi.MontantDecaisse = 3_000_000m;
-        Assert.Equal(2_000_000m, vendredi.Reliquat);
+        var prevuSemaine = 20_000_000m;
 
-        // L'administrateur clôture : les 2 M repartent en banque.
-        vendredi.MontantRestitue = 2_000_000m;
-        vendredi.DateRestitution = DateTime.UtcNow;
+        var journees = new[] { Journee(5_000_000m), Journee(4_000_000m), Journee(3_000_000m) };
+        var depense = journees.Sum(j => j.Total);
 
-        Assert.True(vendredi.EstRestituee);
-        Assert.Equal(0m, vendredi.Reliquat);
+        Assert.Equal(12_000_000m, depense);
+        Assert.Equal(8_000_000m, prevuSemaine - depense);
     }
 
     [Fact]
-    public void Apres_cloture_plus_aucune_sortie_n_est_possible()
+    public void Le_reste_de_la_semaine_n_est_jamais_sorti_de_la_banque()
     {
-        var vendredi = Journee(5_000_000m);
-        vendredi.MontantDecaisse = 3_000_000m;
+        // 20 M prévus, 12 M dépensés : les 8 M restants sont toujours sur le compte.
+        // Aucune journée ne les porte — la somme des reliquats est nulle.
+        var prevuSemaine = 20_000_000m;
+        var journees = new[] { Journee(5_000_000m), Journee(4_000_000m), Journee(3_000_000m) };
 
-        // Tant que la période est ouverte, on peut encore dépenser les 2 M.
-        Assert.True(vendredi.PeutDecaisser);
-
-        vendredi.MontantRestitue = 2_000_000m;
-        vendredi.DateRestitution = DateTime.UtcNow;
-
-        // L'argent est en banque : la caisse du chantier est fermée.
-        Assert.False(vendredi.PeutDecaisser);
+        Assert.Equal(0m, journees.Sum(j => j.Reliquat));
+        Assert.Equal(8_000_000m, prevuSemaine - journees.Sum(j => j.Total));
     }
 
     [Fact]
-    public void La_periode_suivante_repart_de_zero()
+    public void Un_reste_negatif_signale_un_depassement_de_la_prevision()
     {
-        var vendredi = Journee(5_000_000m);
-        vendredi.MontantDecaisse = 3_000_000m;
-        vendredi.MontantRestitue = 2_000_000m;
-        vendredi.DateRestitution = DateTime.UtcNow;
+        var prevuSemaine = 10_000_000m;
+        var journees = new[] { Journee(6_000_000m), Journee(7_000_000m) };
 
-        // C'est ce calcul que fait PrevisionService.ExecuterAsync pour établir
-        // le report : plafond de la veille, moins ce qui a été dépensé, moins ce
-        // qui est reparti en banque.
-        var report = vendredi.PlafondDuJour - vendredi.MontantDecaisse - vendredi.MontantRestitue;
+        var reste = prevuSemaine - journees.Sum(j => j.Total);
 
-        Assert.Equal(0m, report);
-
-        // Le lundi suivant ne demande donc que son propre montant.
-        var lundiSuivant = Journee(4_000_000m, report: report);
-        Assert.Equal(4_000_000m, lundiSuivant.PlafondDuJour);
+        Assert.Equal(-3_000_000m, reste);
+        Assert.True(reste < 0);
     }
 
     [Fact]
-    public void Une_cloture_sans_reste_ferme_quand_meme_la_periode()
+    public void Sans_prevision_de_semaine_il_n_y_a_rien_a_comparer()
     {
-        // Tout a été dépensé : rien ne revient en banque, mais la période se ferme.
-        var vendredi = Journee(5_000_000m);
-        vendredi.MontantDecaisse = 5_000_000m;
+        // Aucun montant saisi dans la prévision semaine : on ne crie pas au
+        // dépassement, on n'a simplement pas de référence.
+        Assert.Equal(0, Palier(0m, 5_000_000m));
+    }
 
+    // ------------------------------------------------------------------
+    //  Les alertes de seuil
+    // ------------------------------------------------------------------
+
+    // Les arguments d'attribut ne peuvent pas être des decimal — on passe des int
+    // et on convertit dans le test.
+    [Theory]
+    [InlineData(10_000_000, 7_000_000, 0)]    // 70 % : on ne dit rien
+    [InlineData(10_000_000, 8_000_000, 80)]   // 80 % pile : on prévient
+    [InlineData(10_000_000, 8_900_000, 80)]   // 89 % : toujours le palier 80
+    [InlineData(10_000_000, 9_000_000, 90)]   // 90 % : palier haut
+    [InlineData(10_000_000, 10_000_000, 90)]  // pile la prévision : pas encore dépassée
+    [InlineData(10_000_000, 10_000_001, 100)] // un ariary de trop : dépassement
+    public void Les_paliers_d_alerte_suivent_la_prevision_de_la_semaine(
+        int prevu, int depense, int palierAttendu)
+    {
+        Assert.Equal(palierAttendu, Palier(prevu, depense));
+    }
+
+    // ------------------------------------------------------------------
+    //  La clôture de la semaine
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void La_cloture_ne_rend_rien_en_banque()
+    {
+        var vendredi = Journee(5_000_000m);
+
+        // L'administrateur clôture la semaine : on arrête les comptes, point.
         vendredi.MontantRestitue = 0m;
         vendredi.DateRestitution = DateTime.UtcNow;
 
         Assert.True(vendredi.EstRestituee);
-        Assert.Equal(0m, vendredi.Reliquat);
+
+        // RIEN n'est restitué : l'argent non dépensé de la semaine n'a jamais
+        // quitté le compte. Un montant non nul ici recréditerait le compte deux fois.
+        Assert.Equal(0m, vendredi.MontantRestitue);
+    }
+
+    [Fact]
+    public void Une_semaine_cloturee_ne_se_ventile_plus()
+    {
+        var vendredi = Journee(5_000_000m);
+
+        // Tant que la semaine est ouverte, on peut encore détailler à qui les
+        // 5 M ont servi — ce détail ne sort aucun argent, il fait descendre le stock.
+        Assert.True(vendredi.PeutDecaisser);
+
+        vendredi.DateRestitution = DateTime.UtcNow;
+
+        // Comptes arrêtés : plus aucune écriture sur cette journée.
         Assert.False(vendredi.PeutDecaisser);
     }
 
     [Fact]
-    public void Le_pourcentage_consomme_suit_le_plafond_reel()
+    public void On_ne_ventile_pas_plus_que_le_montant_de_la_journee()
     {
-        // Les alertes 50 / 80 / 90 % se calculent sur le plafond du jour,
-        // report compris — pas sur le seul montant demandé.
-        var mardi = Journee(4_000_000m, report: 2_000_000m);
+        var lundi = Journee(5_000_000m);
+
+        // 3 M ventilés : il reste 2 M à attribuer.
+        lundi.MontantDecaisse = 3_000_000m;
+        Assert.True(lundi.PeutDecaisser);
+        Assert.Equal(2_000_000m, lundi.PlafondDuJour - lundi.MontantDecaisse);
+
+        // Tout est attribué : plus rien à ventiler, mais la dépense, elle, était
+        // déjà faite depuis l'exécution.
+        lundi.MontantDecaisse = 5_000_000m;
+        Assert.False(lundi.PeutDecaisser);
+        Assert.Equal(0m, lundi.Reliquat);
+    }
+
+    [Fact]
+    public void La_semaine_suivante_repart_de_zero()
+    {
+        var vendredi = Journee(5_000_000m);
+        vendredi.DateRestitution = DateTime.UtcNow;
+
+        // Le lundi suivant ne demande que son propre montant : aucun héritage.
+        var lundiSuivant = Journee(4_000_000m);
+
+        Assert.Equal(0m, lundiSuivant.ReportVeille);
+        Assert.Equal(4_000_000m, lundiSuivant.PlafondDuJour);
+    }
+
+    [Fact]
+    public void Le_pourcentage_ventile_suit_le_montant_du_jour()
+    {
+        // Le compteur de ventilation se calcule sur le montant de la journée.
+        var mardi = Journee(6_000_000m);
         mardi.MontantDecaisse = 3_000_000m;
 
         Assert.Equal(6_000_000m, mardi.PlafondDuJour);

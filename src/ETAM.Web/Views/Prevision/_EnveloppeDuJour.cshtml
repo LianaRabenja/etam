@@ -2,36 +2,29 @@
 @using ETAM.Domain.Enums
 @*
     La caisse du chantier, présentée comme la fiche de stock du magasinier :
-    une entrée, des sorties, un reste. Rien d'autre.
+    une entrée, une sortie, un reste.
+
+    La sortie n'est plus à noter à la main : l'argent quitte la banque à
+    l'exécution et il est dépensé dans le même geste. La fiche se solde donc
+    toute seule, le jour même. Les paiements détaillés, quand il y en a, ne
+    sont que de l'information sous la sortie — ils ne la rejouent pas.
 *@
 
 @if (Model.Statut == StatutPrevision.Executee || Model.Statut == StatutPrevision.RapportSoumis
      || Model.Statut == StatutPrevision.Cloturee)
 {
-    var reste = Model.Reliquat;
     var sorties = Model.Decaissements.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToList();
 
     <div class="etam-card p-4 mb-3">
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="mb-0">La caisse du chantier</h6>
-            @if (Model.PeutDecaisser
-                 && (User.IsInRole("Administrateur") || User.IsInRole("Correspondant") || User.IsInRole("Chef de chantier")))
-            {
-                <a asp-controller="Decaissement" asp-action="Create" asp-route-previsionId="@Model.Id"
-                   class="btn btn-primary btn-sm">
-                    <i class="fa-solid fa-plus me-1"></i> Noter une sortie
-                </a>
-            }
         </div>
 
         @* ---- Le seul chiffre à retenir ---- *@
-        <div class="text-center py-3 mb-3 rounded"
-             style="background:@(reste > 0 ? "#f0fdf4" : "#f8fafc")">
+        <div class="text-center py-3 mb-3 rounded" style="background:#f8fafc">
             <div class="text-muted small">Reste à utiliser sur le chantier</div>
-            <div class="fw-bold" style="font-size:2rem;color:@(reste > 0 ? "#047857" : "#64748b")">
-                @reste.ToString("N0") Ar
-            </div>
+            <div class="fw-bold" style="font-size:2rem;color:#64748b">0 Ar</div>
         </div>
 
         @* ---- La fiche : entrée, sortie, reste ---- *@
@@ -46,23 +39,6 @@
                 </tr>
             </thead>
             <tbody>
-            @{
-                var solde = 0m;
-            }
-
-            @if (Model.ReportVeille > 0)
-            {
-                solde += Model.ReportVeille;
-                <tr>
-                    <td class="small text-muted">@Model.DatePrevision.ToString("dd/MM")</td>
-                    <td>Reste de la journée précédente</td>
-                    <td class="text-end text-success">@Model.ReportVeille.ToString("N0")</td>
-                    <td></td>
-                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
-                </tr>
-            }
-
-            @{ solde += Model.Total; }
             <tr>
                 <td class="small text-muted">@Model.DateExecution?.ToString("dd/MM HH:mm")</td>
                 <td>
@@ -78,33 +54,29 @@
                 </td>
                 <td class="text-end text-success fw-semibold">@Model.Total.ToString("N0")</td>
                 <td></td>
-                <td class="text-end fw-semibold">@solde.ToString("N0")</td>
+                <td class="text-end fw-semibold">@Model.Total.ToString("N0")</td>
+            </tr>
+            <tr>
+                <td class="small text-muted">@Model.DateExecution?.ToString("dd/MM HH:mm")</td>
+                <td>Dépensé sur le chantier</td>
+                <td></td>
+                <td class="text-end text-danger fw-semibold">@Model.Total.ToString("N0")</td>
+                <td class="text-end fw-semibold">0</td>
             </tr>
 
+            @* Les paiements détaillés ne redescendent pas le solde : ils disent
+               seulement à qui la sortie ci-dessus a servi. *@
             @foreach (var d in sorties)
             {
-                solde -= d.Montant;
                 <tr>
-                    <td class="small text-muted">@d.Date.ToString("dd/MM HH:mm")</td>
-                    <td>
-                        @d.Motif
-                        <span class="text-muted small">— @d.Beneficiaire</span>
+                    <td></td>
+                    <td class="small text-muted ps-4">
+                        dont @d.Motif
+                        <span class="text-muted">— @d.Beneficiaire</span>
                     </td>
                     <td></td>
-                    <td class="text-end text-danger">@d.Montant.ToString("N0")</td>
-                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
-                </tr>
-            }
-
-            @if (Model.EstRestituee)
-            {
-                solde -= Model.MontantRestitue;
-                <tr class="table-light">
-                    <td class="small text-muted">@Model.DateRestitution?.ToString("dd/MM")</td>
-                    <td class="fw-semibold">Reste remis en banque — clôture de la période</td>
+                    <td class="text-end small text-muted">@d.Montant.ToString("N0")</td>
                     <td></td>
-                    <td class="text-end text-primary fw-semibold">@Model.MontantRestitue.ToString("N0")</td>
-                    <td class="text-end fw-semibold">@solde.ToString("N0")</td>
                 </tr>
             }
             </tbody>
@@ -114,15 +86,15 @@
         {
             <p class="text-muted small mt-3 mb-0">
                 <i class="fa-solid fa-lock me-1"></i>
-                Période clôturée le @Model.DateRestitution?.ToString("dd/MM/yyyy") :
-                l'argent est retourné en banque, plus aucune sortie n'est possible ici.
+                Semaine clôturée le @Model.DateRestitution?.ToString("dd/MM/yyyy") :
+                les comptes de cette journée sont arrêtés.
             </p>
         }
-        else if (Model.EstAccuseeReception && !sorties.Any())
+        else
         {
             <p class="text-muted small mt-3 mb-0">
-                Aucune sortie notée. Cliquez sur « Noter une sortie » à chaque fois que
-                le chef donne de l'argent à quelqu'un.
+                Il n'y a rien à noter : la sortie est enregistrée automatiquement à
+                l'exécution de la prévision, pour la totalité du montant.
             </p>
         }
     </div>

@@ -2,11 +2,10 @@
 @using ETAM.Domain.Enums
 @{
     ViewData["Title"] = $"Prévision {Model.Reference}";
-    var totalCompte = Model.Lignes.Where(l => l.TypeBudget == TypeBudget.Compte).Sum(l => l.Total);
-    var totalMateriel = Model.Lignes.Where(l => l.TypeBudget == TypeBudget.Materiel).Sum(l => l.Total);
-    decimal bcRestant = ViewBag.BudgetCompteRestant ?? 0m;
+    // Une prévision s'impute toujours sur le budget Matériel du chantier :
+    // le choix a été retiré des écrans de saisie.
+    var totalMateriel = Model.Lignes.Sum(l => l.Total);
     decimal bmRestant = ViewBag.BudgetMaterielRestant ?? 0m;
-    var depasseCompte = totalCompte > bcRestant;
     var depasseMateriel = totalMateriel > bmRestant;
     var resteApres = ViewBag.ResteApres as Dictionary<long, decimal> ?? new Dictionary<long, decimal>();
     // Tant que la prévision n'est pas validée par l'Administrateur, le reste affiché
@@ -77,7 +76,7 @@
                 <thead><tr>
                     <th>Désignation</th>
                     @if (afficherPoste) { <th>Poste prévu</th> }
-                    <th>Type</th><th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th>
+                    <th class="text-end">Qté</th><th class="text-end">P.U.</th><th class="text-end">Total</th>
                     @if (afficherPoste) { <th class="text-end">Reste sur l'enveloppe</th> }
                 </tr></thead>
                 <tbody>
@@ -102,7 +101,6 @@
                             }
                         </td>
                         }
-                        <td><span class="badge @(l.TypeBudget == TypeBudget.Compte ? "bg-primary" : "bg-success")">@l.TypeBudget</span></td>
                         <td class="text-end">@l.Quantite.ToString("N2")</td>
                         <td class="text-end">@l.PrixUnitaireEstime.ToString("N0")</td>
                         <td class="text-end fw-semibold">@l.Total.ToString("N0")</td>
@@ -159,12 +157,13 @@
            sans erreur. Seul l'avertissement de dépassement subsiste, car il annonce
            une conséquence réelle au moment de l'exécution. Les calculs restent faits
            plus haut : ils alimentent le drapeau « utiliserReserve » du bouton Exécuter. *@
-        @if (depasseCompte || depasseMateriel)
+        @if (depasseMateriel)
         {
             <div class="alert alert-warning small mb-4">
                 <i class="fa-solid fa-triangle-exclamation me-1"></i>
-                Cette prévision dépasse le budget disponible : son exécution puisera dans la réserve
-                et demandera la validation de l'Administrateur.
+                Cette prévision dépasse le budget Matériel disponible du chantier
+                (@bmRestant.ToString("N0") Ar pour @totalMateriel.ToString("N0") Ar demandés) :
+                son exécution puisera dans la réserve et demandera la validation de l'Administrateur.
             </div>
         }
 
@@ -206,7 +205,7 @@
             {
                 <form asp-action="Executer" method="post" class="mb-2">
                     @Html.AntiForgeryToken()<input type="hidden" name="id" value="@Model.Id" />
-                    <input type="hidden" name="utiliserReserve" value="@((depasseCompte || depasseMateriel).ToString().ToLower())" />
+                    <input type="hidden" name="utiliserReserve" value="@(depasseMateriel.ToString().ToLower())" />
                     <button class="btn btn-success w-100"><i class="fa-solid fa-gears me-1"></i> Exécuter</button>
                 </form>
             }

@@ -29,15 +29,17 @@
         <div class="col-md-4"><label class="form-label">Statut</label>
             <select asp-for="Statut" asp-items="Html.GetEnumSelectList<StatutChantier>()" class="form-select"></select></div>
         <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Marché</h6>
-            <small class="text-muted">Le budget du projet = montant du marché − bénéfice. C'est lui que couvrira la prévision globale.</small></div>
+            <small class="text-muted">Saisissez le marché et ce que le chantier a le droit de dépenser. Le bénéfice s'en déduit.</small></div>
         <div class="col-md-4"><label class="form-label">Montant du marché (Ar)</label>
             <input asp-for="MontantMarche" id="inMarche" type="number" step="0.01" class="form-control" />
             <span asp-validation-for="MontantMarche" class="text-danger small"></span></div>
-        <div class="col-md-4"><label class="form-label">Bénéfice (Ar)</label>
-            <input asp-for="Benefice" id="inBenefice" type="number" step="0.01" class="form-control" />
-            <span asp-validation-for="Benefice" class="text-danger small"></span></div>
-        <div class="col-md-4"><label class="form-label">Budget projet (calculé)</label>
-            <input id="inBudgetProjet" class="form-control bg-light" readonly value="0" /></div>
+        <div class="col-md-4"><label class="form-label">Bénéfice (calculé)</label>
+            <input id="inBenefice" class="form-control bg-light" readonly value="0" />
+            <small class="text-muted">Marché − budget du projet.</small></div>
+        <div class="col-md-4"><label class="form-label">Budget du projet (Ar)</label>
+            <input asp-for="BudgetProjet" id="inBudgetProjet" type="number" step="0.01" class="form-control" />
+            <small class="text-muted">Ce que couvrira la prévision globale.</small>
+            <span asp-validation-for="BudgetProjet" class="text-danger small"></span></div>
 
         <div class="col-12"><hr class="my-1" /><h6 class="fw-bold mb-0">Compte bancaire du chantier</h6>
             <small class="text-muted">Ce compte est créé automatiquement avec le chantier. La somme indiquée y entre à l'ouverture.</small></div>
@@ -78,20 +80,22 @@
 <script>
   (function(){
     var m = document.getElementById('inMarche'),
-        b = document.getElementById('inBenefice'),
-        r = document.getElementById('inBudgetProjet');
+        bp = document.getElementById('inBudgetProjet'),
+        r = document.getElementById('inBenefice');
     var banque = document.getElementById('inEnBanque'),
         numero = document.getElementById('inNumero'),
         code   = document.getElementById('Code'),
         banqueTouchee = false;
     if (banque) banque.addEventListener('input', function(){ banqueTouchee = true; });
     function maj(){
-      var v = (parseFloat(m.value)||0) - (parseFloat(b.value)||0);
+      // Bénéfice = marché − budget du projet. C'est le budget qu'on saisit.
+      var v = (parseFloat(m.value)||0) - (parseFloat(bp.value)||0);
       r.value = new Intl.NumberFormat('fr-FR').format(Math.round(v));
+      r.classList.toggle('text-danger', v < 0);
       // Tant que l'utilisateur n'a pas saisi de montant bancaire, on recopie le marche.
       if (banque && !banqueTouchee) banque.value = m.value;
     }
-    m.addEventListener('input', maj); b.addEventListener('input', maj); maj();
+    m.addEventListener('input', maj); bp.addEventListener('input', maj); maj();
     // Numero de compte propose a partir du code chantier, modifiable.
     if (code && numero) {
       code.addEventListener('input', function(){

@@ -9,9 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace ETAM.Web.Controllers;
 
 /// <summary>
-/// Le plan de la semaine : ce qu'on prévoit de dépenser chaque jour, à l'intérieur
-/// de l'enveloppe du mois. Ce n'est qu'un plan — aucun argent n'y est engagé.
-/// Les demandes du chantier viennent ensuite s'y comparer.
+/// La prévision de la semaine : le détail de ce qu'on prévoit de dépenser chaque
+/// jour, à l'intérieur de l'enveloppe du mois. C'est la référence du cumul :
+/// la prévision réelle vient s'y comparer, journée par journée et sur la semaine.
 /// </summary>
 // Planification budgétaire de la semaine : direction et finance uniquement.
 [Authorize(Roles = "Administrateur,Correspondant")]
@@ -59,7 +59,9 @@ public class PlanSemaineController : Controller
             .Where(p => p.ChantierId == chantierId && p.Date >= lundi && p.Date <= dimanche)
             .ToListAsync(ct);
 
-        // Ce que le chantier a effectivement demandé sur chaque jour.
+        // Ce que le chantier a effectivement demandé sur chaque jour, et ce qui est
+        // réellement SORTI de la banque — c'est cette deuxième colonne qui se compare
+        // au plan, puisque l'argent est utilisé dès l'exécution.
         var demandes = await _uow.Previsions.Query().AsNoTracking()
             .Where(p => p.ChantierId == chantierId
                         && p.DatePrevision >= lundi && p.DatePrevision <= dimanche
@@ -88,8 +90,20 @@ public class PlanSemaineController : Controller
                 plan?.Observation,
                 dem.Sum(x => x.Montant),
                 dem.Count,
-                dem.FirstOrDefault()?.Id));
+                dem.FirstOrDefault()?.Id,
+                dem.Where(x => x.Statut is StatutPrevision.Executee
+                                        or StatutPrevision.RapportSoumis
+                                        or StatutPrevision.Cloturee)
+                   .Sum(x => x.Montant)));
         }
+
+        // Cumul de la semaine : prévu, dépensé, et ce qu'il reste de la prévision.
+        var totalPrevu = semaine.Sum(j => j.MontantPrevu);
+        var totalSorti = semaine.Sum(j => j.MontantExecute);
+        ViewBag.TotalPrevu = totalPrevu;
+        ViewBag.TotalSorti = totalSorti;
+        ViewBag.ResteDuPlan = totalPrevu - totalSorti;
+        ViewBag.PourcentagePlan = totalPrevu <= 0 ? 0d : (double)(totalSorti / totalPrevu) * 100d;
 
         return View(semaine);
     }
@@ -110,7 +124,7 @@ public class PlanSemaineController : Controller
         if (enveloppe is null)
         {
             TempData["Error"] = "Aucune enveloppe ouverte pour ce mois. " +
-                                "Créez et validez l'enveloppe du mois avant de planifier la semaine.";
+                                "Créez et validez l'enveloppe du mois avant d'établir la prévision de la semaine.";
             return RedirectToAction(nameof(Index), new { chantierId, jour = lundi });
         }
 
@@ -129,7 +143,7 @@ public class PlanSemaineController : Controller
         if (dejaPlanifie + totalSemaine > enveloppe.EnveloppeTotale)
         {
             TempData["Error"] =
-                $"Le plan dépasse l'enveloppe de {enveloppe.Libelle} : " +
+                $"La prévision de la semaine dépasse l'enveloppe de {enveloppe.Libelle} : " +
                 $"{dejaPlanifie:N0} Ar déjà planifiés sur les autres semaines, " +
                 $"{totalSemaine:N0} Ar pour celle-ci, " +
                 $"pour une enveloppe de {enveloppe.EnveloppeTotale:N0} Ar.";
@@ -147,7 +161,7 @@ public class PlanSemaineController : Controller
 
             if (montant <= 0)
             {
-                // Un montant remis à zéro efface la journée du plan.
+                // Un montant remis à zéro efface la journée de la prévision.
                 if (existant is not null)
                 {
                     existant.IsDeleted = true;
@@ -180,7 +194,7 @@ public class PlanSemaineController : Controller
         await _audit.LogAsync(TypeActionAudit.Modification, nameof(PlanJournalier), chantierId.ToString(),
             nouvelleValeur: $"Semaine du {lundi:dd/MM/yyyy} — {totalSemaine:N0} Ar planifiés", ct: ct);
 
-        TempData["Success"] = $"Plan de la semaine enregistré : {totalSemaine:N0} Ar prévus.";
+        TempData["Success"] = $"Prévision de la semaine enregistrée : {totalSemaine:N0} Ar prévus.";
         return RedirectToAction(nameof(Index), new { chantierId, jour = lundi });
     }
 }
@@ -194,8 +208,15 @@ public record JourDeLaSemaine(
     string? Observation,
     decimal MontantDemande,
     int NombreDemandes,
-    long? PremiereDemandeId)
+    long? PremiereDemandeId,
+    decimal MontantExecute = 0m)
 {
     public decimal Ecart => MontantDemande - MontantPrevu;
     public bool RienDemande => NombreDemandes == 0;
+
+    /// <summary>
+    /// Écart entre ce qui est réellement sorti de la banque et ce qui était prévu.
+    /// C'est celui qui compte : l'argent est utilisé dès l'exécution.
+    /// </summary>
+    public decimal EcartReel => MontantExecute - MontantPrevu;
 }

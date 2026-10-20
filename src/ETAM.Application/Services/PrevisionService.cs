@@ -197,9 +197,17 @@ public class PrevisionService : IPrevisionService
                     "Créez et validez l'enveloppe du mois avant d'ouvrir une prévision journalière.");
             }
 
-            // --- Reprise du reliquat de la journée précédente ---
-            // On prend la dernière prévision ouverte ou clôturée du chantier, antérieure
-            // à celle-ci, et dont le reliquat n'a pas déjà été repris par une autre.
+            // --- Plus aucun report d'une journée sur l'autre ---
+            // L'argent sort de la banque à l'exécution ET il est dépensé : il ne reste
+            // rien dans les mains de personne, donc rien à reporter au lendemain.
+            //
+            // L'ancien calcul s'appuyait sur MontantDecaisse, qui ne bouge plus jamais :
+            // chaque journée héritait du total de la précédente et le plafond s'empilait
+            // à l'infini (jour 3 = jour1 + jour2 + jour3). Le cumul se fait désormais au
+            // niveau de la SEMAINE, contre la prévision de la semaine, qui est l'argent réel.
+            //
+            // Le lien vers la journée précédente reste posé pour la lecture de
+            // l'historique, mais il ne porte plus d'argent.
             var precedente = await _uow.Previsions.Query()
                 .Where(x => x.ChantierId == p.ChantierId
                             && x.Id != p.Id
@@ -216,24 +224,7 @@ public class PrevisionService : IPrevisionService
                 var dejaRepris = await _uow.Previsions.AnyAsync(
                     x => x.PrevisionPrecedenteId == precedente.Id && x.Id != p.Id, ct);
 
-                if (!dejaRepris)
-                {
-                    // Le reliquat se recalcule à partir des montants figés sur la prévision.
-                    // Les parenthèses sont indispensables : sans elles, une prévision sans
-                    // ligne ferait retomber le plafond à zéro en perdant le report.
-                    var totalPrecedent = await _uow.PrevisionLignes.Query()
-                        .Where(l => l.PrevisionJournaliereId == precedente.Id)
-                        .SumAsync(l => (decimal?)(l.Quantite * l.PrixUnitaireEstime), ct) ?? 0m;
-
-                    // Le montant restitué se déduit comme une dépense : si la période a
-                    // été clôturée sur cette journée, l'argent est déjà retourné en
-                    // banque et le report retombe naturellement à zéro. C'est ce qui
-                    // fait repartir la semaine suivante sur une base propre.
-                    var plafondPrecedent = precedente.ReportVeille + totalPrecedent;
-                    report = plafondPrecedent - precedente.MontantDecaisse - precedente.MontantRestitue;
-                    if (report < 0) report = 0;
-                    p.PrevisionPrecedenteId = precedente.Id;
-                }
+                if (!dejaRepris) p.PrevisionPrecedenteId = precedente.Id;
             }
 
             // --- L'enveloppe du mois doit pouvoir couvrir la journée ---
@@ -245,7 +236,7 @@ public class PrevisionService : IPrevisionService
                     $"Enveloppe de {enveloppe.Libelle} insuffisante : {disponibleMois:N0} Ar disponibles " +
                     $"pour une prévision de {total:N0} Ar. " +
                     $"(Enveloppe {enveloppe.EnveloppeTotale:N0} Ar dont {enveloppe.ReportMoisPrecedent:N0} Ar " +
-                    $"reportés, déjà décaissé {enveloppe.MontantConsomme:N0} Ar.)");
+                    $"reportés, déjà dépensé {enveloppe.MontantConsomme:N0} Ar.)");
             }
 
             // --- L'ARGENT SORT ICI ---
@@ -289,6 +280,15 @@ public class PrevisionService : IPrevisionService
                 EstValide = true
             }, ct);
 
+            // --- L'ENVELOPPE DU MOIS SE REMPLIT ICI ---
+            // Personne ne l'incrémentait : MontantConsomme n'était écrit nulle part dans
+            // le projet, il était seulement lu. Le contrôle juste au-dessus passait donc
+            // toujours, et un chantier pouvait dépenser dix fois son enveloppe du mois
+            // sans que rien ne s'y oppose. L'argent étant dépensé à l'exécution, c'est
+            // ici que le mois se consomme.
+            enveloppe.MontantConsomme += total;
+            _uow.PrevisionsMensuelles.Update(enveloppe);
+
             p.PrevisionMensuelleId = enveloppe.Id;
             p.ReportVeille = report;
             p.MontantDecaisse = 0m;
@@ -300,6 +300,10 @@ public class PrevisionService : IPrevisionService
             await _uow.CommitAsync(ct);
 
             await _alertes.EvaluerAlertesAsync(ct);
+
+            // L'argent vient de sortir : on confronte tout de suite la semaine à son plan.
+            await EvaluerPlanSemaineAsync(p, chantier.Nom, ct);
+
             await _audit.LogAsync(TypeActionAudit.Execution, nameof(PrevisionJournaliere), id.ToString(),
                 nouvelleValeur: $"Enveloppe ouverte : {total:N0} Ar + report {report:N0} Ar", ct: ct);
 
@@ -354,94 +358,156 @@ public class PrevisionService : IPrevisionService
     }
 
     /// <summary>
-    /// Clôture de la période d'un chantier : le reste qui n'a pas été utilisé
-    /// retourne en banque, et la chaîne des reports s'arrête.
+    /// Clôture de la semaine d'un chantier : on arrête les comptes de la semaine et
+    /// on constate l'écart entre la prévision de la semaine et ce qui a été dépensé.
     ///
-    /// C'est le geste de fin de semaine. Les journées se sont cumulées, le reste de
-    /// chacune est passé à la suivante ; à la clôture, ce qui n'a pas servi rentre
-    /// sur le compte du chantier. La période suivante repart d'une base propre :
-    /// aucun report n'est traîné d'une semaine à l'autre.
+    /// AUCUN MOUVEMENT BANCAIRE N'EST FAIT ICI, et c'est volontaire. L'argent quitte
+    /// la banque à l'exécution d'une prévision, et il est dépensé à ce moment-là. Ce
+    /// qui n'a pas été exécuté n'a donc JAMAIS quitté le compte : il n'y a rien à y
+    /// remettre. L'ancienne version créditait le compte du cumul de la période, ce qui
+    /// revenait à créer de l'argent qui n'était jamais parti.
     ///
-    /// Aucune écriture n'est faite sur l'enveloppe du mois : celle-ci ne compte que
-    /// les décaissements réels, elle est donc déjà juste.
+    /// Retourne la part de la prévision de la semaine qui n'a pas été dépensée. C'est une
+    /// information — pas un transfert : cet argent est resté en banque.
     /// </summary>
     public async Task<Result<decimal>> CloturerPeriodeAsync(long chantierId, CancellationToken ct = default)
     {
         var chantier = await _uow.Chantiers.GetByIdAsync(chantierId, ct);
         if (chantier is null) return Result<decimal>.Failure("Chantier introuvable.");
 
-        // La dernière journée ouverte du chantier porte tout le reste de la période :
-        // celui des journées précédentes lui a été reporté.
-        var derniere = await _uow.Previsions.Query()
-            .Include(p => p.Lignes)
+        // La semaine à clôturer est celle de la dernière journée exécutée et non
+        // encore clôturée. On ne clôture jamais « tout depuis le début » : une
+        // semaine à la fois, dans l'ordre, sinon les constats se mélangent.
+        var derniere = await _uow.Previsions.Query().AsNoTracking()
             .Where(p => p.ChantierId == chantierId
                         && p.DateRestitution == null
                         && (p.Statut == StatutPrevision.Executee
                             || p.Statut == StatutPrevision.RapportSoumis
                             || p.Statut == StatutPrevision.Cloturee))
-            .OrderByDescending(p => p.DatePrevision).ThenByDescending(p => p.Id)
+            .OrderBy(p => p.DatePrevision).ThenBy(p => p.Id)
             .FirstOrDefaultAsync(ct);
 
         if (derniere is null)
             return Result<decimal>.Failure(
-                $"Aucune période ouverte sur {chantier.Nom} : il n'y a rien à clôturer.");
+                $"Aucune semaine ouverte sur {chantier.Nom} : il n'y a rien à clôturer.");
 
-        var reste = derniere.Reliquat;
-        if (reste < 0) reste = 0;
+        var jour = derniere.DatePrevision.Date;
+        var decalage = ((int)jour.DayOfWeek + 6) % 7;
+        var lundi = DateTime.SpecifyKind(jour.AddDays(-decalage), DateTimeKind.Utc);
+        var dimanche = lundi.AddDays(6);
 
-        var compte = await _uow.ComptesBancaires.Query()
-            .FirstOrDefaultAsync(c => c.ChantierId == chantierId && c.EstActif, ct);
+        var journees = await _uow.Previsions.Query()
+            .Include(p => p.Lignes)
+            .Where(p => p.ChantierId == chantierId
+                        && p.DatePrevision >= lundi && p.DatePrevision <= dimanche
+                        && p.DateRestitution == null
+                        && (p.Statut == StatutPrevision.Executee
+                            || p.Statut == StatutPrevision.RapportSoumis
+                            || p.Statut == StatutPrevision.Cloturee))
+            .ToListAsync(ct);
 
-        if (compte is null && reste > 0)
-            return Result<decimal>.Failure(
-                $"Aucun compte bancaire actif pour {chantier.Nom} : impossible d'y remettre les {reste:N0} Ar restants.");
+        // La prévision de la semaine : c'est elle qui fait référence, c'est l'argent réel.
+        var prevuSemaine = await _uow.PlansJournaliers.Query().AsNoTracking()
+            .Where(x => x.ChantierId == chantierId && x.Date >= lundi && x.Date <= dimanche)
+            .SumAsync(x => (decimal?)x.MontantPrevu, ct) ?? 0m;
+
+        var sortiSemaine = journees.Sum(p => p.Lignes.Where(l => !l.IsDeleted).Sum(l => l.Total));
+        var nonDepense = prevuSemaine - sortiSemaine;
 
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            if (reste > 0 && compte is not null)
+            var maintenant = DateTime.UtcNow;
+            foreach (var j in journees)
             {
-                compte.Solde += reste;
-                _uow.ComptesBancaires.Update(compte);
-
-                await _uow.MouvementsBancaires.AddAsync(new MouvementBancaire
-                {
-                    CompteBancaireId = compte.Id,
-                    Date = DateTime.UtcNow,
-                    Type = TypeMouvementBancaire.Depot,
-                    Montant = reste,
-                    Beneficiaire = chantier.Nom,
-                    Motif = $"Retour de caisse — clôture de période au {DateTime.UtcNow:dd/MM/yyyy} "
-                            + $"(dernière journée {derniere.Reference})",
-                    ChantierId = chantierId,
-                    EstValide = true
-                }, ct);
+                // MontantRestitue reste à zéro : rien n'est physiquement rendu, rien
+                // n'était resté dehors. Seule la date marque la semaine comme arrêtée.
+                j.MontantRestitue = 0m;
+                j.DateRestitution = maintenant;
+                j.RestitueParId = _currentUser.UserId;
+                _uow.Previsions.Update(j);
             }
-
-            derniere.MontantRestitue = reste;
-            derniere.DateRestitution = DateTime.UtcNow;
-            derniere.RestitueParId = _currentUser.UserId;
-            _uow.Previsions.Update(derniere);
 
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitAsync(ct);
 
             await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere),
-                derniere.Id.ToString(),
-                nouvelleValeur: $"Période clôturée — {reste:N0} Ar remis en banque", ct: ct);
+                chantierId.ToString(),
+                nouvelleValeur: $"Semaine du {lundi:dd/MM/yyyy} clôturée — prévu {prevuSemaine:N0} Ar, "
+                                + $"dépensé {sortiSemaine:N0} Ar, non dépensé {nonDepense:N0} Ar", ct: ct);
 
             _logger.LogInformation(
-                "Période clôturée sur {Chantier} : {Reste} Ar remis en banque (journée {Ref}).",
-                chantier.Nom, reste, derniere.Reference);
+                "Semaine du {Lundi:dd/MM} clôturée sur {Chantier} : prévu {Prevu} Ar, "
+                + "dépensé {Sorti} Ar, non dépensé {Reste} Ar ({Nb} journées).",
+                lundi, chantier.Nom, prevuSemaine, sortiSemaine, nonDepense, journees.Count);
 
-            return Result<decimal>.Success(reste);
+            return Result<decimal>.Success(nonDepense);
         }
         catch (Exception ex)
         {
             await _uow.RollbackAsync(ct);
-            _logger.LogError(ex, "Échec de la clôture de période sur le chantier {Id}.", chantierId);
+            _logger.LogError(ex, "Échec de la clôture de semaine sur le chantier {Id}.", chantierId);
             return Result<decimal>.Failure("Une erreur est survenue lors de la clôture : " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Compare ce qui a été exécuté dans la semaine à ce que la prévision de la semaine
+    /// prévoyait, et prévient quand on s'en approche ou qu'on le dépasse.
+    ///
+    /// C'est la référence demandée : l'argent étant utilisé dès l'exécution, la
+    /// seule question qui reste est « a-t-on dépensé ce qui était écrit ? ». On la
+    /// pose au moment où l'argent sort, pas des heures plus tard.
+    /// </summary>
+    private async Task EvaluerPlanSemaineAsync(PrevisionJournaliere p, string nomChantier, CancellationToken ct)
+    {
+        // Lundi de la semaine de cette journée. Le décalage de 6 place dimanche
+        // en fin de semaine, comme à Madagascar.
+        var jour = p.DatePrevision.Date;
+        var decalage = ((int)jour.DayOfWeek + 6) % 7;
+        var lundi = DateTime.SpecifyKind(jour.AddDays(-decalage), DateTimeKind.Utc);
+        var dimanche = lundi.AddDays(6);
+
+        var prevuSemaine = await _uow.PlansJournaliers.Query().AsNoTracking()
+            .Where(x => x.ChantierId == p.ChantierId && x.Date >= lundi && x.Date <= dimanche)
+            .SumAsync(x => (decimal?)x.MontantPrevu, ct) ?? 0m;
+
+        // Pas de prévision pour cette semaine : rien à comparer, on ne dit rien.
+        if (prevuSemaine <= 0) return;
+
+        var journeesSorties = _uow.Previsions.Query()
+            .Where(x => x.ChantierId == p.ChantierId
+                        && x.DatePrevision >= lundi && x.DatePrevision <= dimanche
+                        && (x.Statut == StatutPrevision.Executee
+                            || x.Statut == StatutPrevision.RapportSoumis
+                            || x.Statut == StatutPrevision.Cloturee));
+
+        var sortiSemaine = await _uow.PrevisionLignes.Query().AsNoTracking()
+            .Where(l => journeesSorties.Any(x => x.Id == l.PrevisionJournaliereId))
+            .SumAsync(l => (decimal?)(l.Quantite * l.PrixUnitaireEstime), ct) ?? 0m;
+
+        var pourcentage = (double)(sortiSemaine / prevuSemaine) * 100d;
+        var periode = $"semaine du {lundi:dd/MM} au {dimanche:dd/MM}";
+
+        if (sortiSemaine > prevuSemaine)
+        {
+            await _alertes.CreerAsync(TypeAlerte.DepassementPrevision, NiveauAlerte.Critique,
+                $"Prévision de la semaine dépassée — {nomChantier}",
+                $"{periode} : {sortiSemaine:N0} Ar dépensés pour une prévision de {prevuSemaine:N0} Ar. "
+                + $"Dépassement de {sortiSemaine - prevuSemaine:N0} Ar.",
+                p.ChantierId, ct);
+            return;
+        }
+
+        // « Presque atteint » : on prévient à 80 % et à 90 %, pas à chaque sortie.
+        var palier = pourcentage >= 90 ? 90 : pourcentage >= 80 ? 80 : 0;
+        if (palier == 0) return;
+
+        await _alertes.CreerAsync(TypeAlerte.SeuilMoitie, NiveauAlerte.Avertissement,
+            $"Prévision de la semaine à {palier} % — {nomChantier}",
+            $"{periode} : {sortiSemaine:N0} Ar dépensés sur {prevuSemaine:N0} Ar prévus. "
+            + $"Il reste {prevuSemaine - sortiSemaine:N0} Ar avant d'atteindre la prévision.",
+            p.ChantierId, ct);
     }
 
     private async Task<PrevisionJournaliere?> ChargerAsync(long id, CancellationToken ct)

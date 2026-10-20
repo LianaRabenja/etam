@@ -13,11 +13,11 @@ public interface IPrevisionService
     Task<Result> RefuserAsync(long previsionId, string motif, CancellationToken ct = default);
 
     /// <summary>
-    /// Ouvre l'enveloppe de la journée : rattache la prévision au mois en cours et y
-    /// ajoute le reliquat non décaissé de la journée précédente.
+    /// Exécute la prévision de la journée : l'argent SORT de la banque et il est
+    /// dépensé. L'enveloppe du mois se consomme d'autant, et la semaine se compare
+    /// aussitôt à son plan.
     ///
-    /// Ne sort aucun argent de la banque et n'impute aucun budget : c'est le rôle
-    /// des décaissements (<see cref="IDecaissementService"/>).
+    /// Il n'y a plus de report d'une journée sur l'autre : rien ne reste dehors.
     /// </summary>
     Task<Result> ExecuterAsync(long previsionId, bool utiliserReserve = false, CancellationToken ct = default);
 
@@ -28,9 +28,12 @@ public interface IPrevisionService
     Task<Result> AccuserReceptionAsync(long previsionId, string nomSignataire, CancellationToken ct = default);
 
     /// <summary>
-    /// Clôture la période en cours d'un chantier : le reste non utilisé retourne en
-    /// banque et la chaîne des reports s'arrête, pour que la période suivante reparte
-    /// de zéro. Retourne le montant effectivement remis en banque.
+    /// Clôture la semaine en cours d'un chantier : on arrête les comptes de la semaine
+    /// et on constate l'écart avec son plan. AUCUN mouvement bancaire n'est fait —
+    /// l'argent non dépensé n'a jamais quitté le compte.
+    ///
+    /// Retourne la part du plan de la semaine qui n'a pas été dépensée (négatif en
+    /// cas de dépassement). C'est une information, pas un transfert.
     /// </summary>
     Task<Result<decimal>> CloturerPeriodeAsync(long chantierId, CancellationToken ct = default);
 }
