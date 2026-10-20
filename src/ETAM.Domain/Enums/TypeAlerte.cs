@@ -19,5 +19,12 @@ public enum TypeAlerte
     DepassementPrevision = 9,
 
     /// <summary>Des travaux financés attendent le compte rendu ou la réception de l'Administrateur.</summary>
-    TravauxNonJustifies = 10
+    TravauxNonJustifies = 10,
+
+    /// <summary>
+    /// Une prévision vient d'être validée ou refusée. C'est la seule catégorie que
+    /// voient le Chef de chantier et, avec les demandes de validation, la Finance :
+    /// ils n'ont pas à recevoir les alertes de budget, de stock ou de seuil.
+    /// </summary>
+    DecisionPrevision = 11
 }

@@ -10,8 +10,11 @@
         {
             <a asp-action="Transferer" class="btn btn-success"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Transférer vers un budget</a>
         }
+        @* La liste des banques n'a plus d'entrée propre dans le menu de gauche :
+           elle se range ici, dans le menu Banques auquel elle appartient. *@
         @if (User.IsInRole("Administrateur"))
         {
+            <a asp-action="Banques" class="btn btn-outline-secondary"><i class="fa-solid fa-landmark me-1"></i> Les banques</a>
             <a asp-action="Create" class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i> Nouveau compte</a>
         }
     </div>

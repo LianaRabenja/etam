@@ -137,6 +137,13 @@ public class PrevisionService : IPrevisionService
             + "Exécutez la prévision pour que l'argent sorte de la banque et parte au chantier.",
             p.ChantierId, ct);
 
+        // Et celui qui a demandé l'argent doit l'apprendre : c'est la seule
+        // notification qui concerne le Chef de chantier.
+        await _alertes.CreerAsync(TypeAlerte.DecisionPrevision, NiveauAlerte.Info,
+            $"Prévision validée — {p.Reference}",
+            $"{p.Chantier?.Nom} — journée du {p.DatePrevision:dd/MM/yyyy}, {p.Total:N0} Ar. "
+            + "La Direction a donné son accord définitif.", p.ChantierId, ct);
+
         await _audit.LogAsync(TypeActionAudit.Validation, nameof(PrevisionJournaliere), id.ToString(),
             nouvelleValeur: "ValideeAdministrateur", ct: ct);
         return Result.Success();
@@ -153,6 +160,12 @@ public class PrevisionService : IPrevisionService
         p.MotifRefus = motif;
         _uow.Previsions.Update(p);
         await _uow.SaveChangesAsync(ct);
+
+        await _alertes.CreerAsync(TypeAlerte.DecisionPrevision, NiveauAlerte.Avertissement,
+            $"Prévision refusée — {p.Reference}",
+            $"{p.Chantier?.Nom} — journée du {p.DatePrevision:dd/MM/yyyy}, {p.Total:N0} Ar. "
+            + $"Motif : {motif}", p.ChantierId, ct);
+
         await _audit.LogAsync(TypeActionAudit.Refus, nameof(PrevisionJournaliere), id.ToString(), nouvelleValeur: motif, ct: ct);
         return Result.Success();
     }

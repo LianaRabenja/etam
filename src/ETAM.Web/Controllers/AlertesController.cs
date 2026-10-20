@@ -1,4 +1,6 @@
+using ETAM.Domain.Enums;
 using ETAM.Domain.Interfaces;
+using ETAM.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,9 +14,22 @@ public class AlertesController : Controller
 
     public AlertesController(IUnitOfWork uow) => _uow = uow;
 
+    /// <summary>
+    /// Les alertes que CET utilisateur a le droit de voir. Toutes les lectures et
+    /// tous les marquages passent par ici : sans cela, un Chef de chantier pouvait
+    /// marquer comme lue une alerte de budget destinée à l'Administrateur, qui ne
+    /// la voyait alors jamais.
+    /// </summary>
+    private IQueryable<ETAM.Domain.Entities.Alerte> AlertesVisibles()
+    {
+        var q = _uow.Alertes.Query();
+        var types = VisibiliteAlertes.TypesVisibles(User);
+        return types is null ? q : q.Where(a => types.Contains(a.Type));
+    }
+
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var alertes = await _uow.Alertes.Query().AsNoTracking()
+        var alertes = await AlertesVisibles().AsNoTracking()
             .Include(a => a.Chantier)
             .OrderByDescending(a => a.CreatedAt).Take(200)
             .ToListAsync(ct);
@@ -25,7 +40,9 @@ public class AlertesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> MarquerLue(long id, CancellationToken ct)
     {
-        var a = await _uow.Alertes.GetByIdAsync(id, ct);
+        // On relit l'alerte dans le périmètre de l'utilisateur : une alerte qu'il
+        // ne voit pas, il ne peut pas la marquer non plus, même en forçant l'id.
+        var a = await AlertesVisibles().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (a is not null && !a.EstLue)
         {
             a.EstLue = true;
@@ -36,7 +53,7 @@ public class AlertesController : Controller
 
         if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
         {
-            var restantes = await _uow.Alertes.CountAsync(x => !x.EstLue, ct);
+            var restantes = await AlertesVisibles().CountAsync(x => !x.EstLue, ct);
             return Json(new { success = true, id, restantes });
         }
         return RedirectToAction(nameof(Index));
@@ -46,7 +63,7 @@ public class AlertesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> MarquerToutesLues(CancellationToken ct)
     {
-        var nonLues = await _uow.Alertes.Query().Where(a => !a.EstLue).ToListAsync(ct);
+        var nonLues = await AlertesVisibles().Where(a => !a.EstLue).ToListAsync(ct);
         foreach (var a in nonLues)
         {
             a.EstLue = true;

@@ -1,6 +1,7 @@
 @using Microsoft.AspNetCore.Identity
 @using ETAM.Infrastructure.Identity
 @using ETAM.Domain.Interfaces
+@using ETAM.Web.Models
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject IUnitOfWork Uow
@@ -9,10 +10,15 @@
     string Active(string c) => string.Equals(ctrl, c, StringComparison.OrdinalIgnoreCase) ? "active" : "";
     var userName = User.Identity?.Name ?? "Utilisateur";
     var initiales = userName.Length >= 2 ? userName.Substring(0,2).ToUpper() : "ET";
-    // Nombre réel d'alertes non lues, affiché en badge sur la cloche de notifications.
-    var nbAlertesNonLues = User.Identity?.IsAuthenticated == true
-        ? await Uow.Alertes.CountAsync(a => !a.EstLue)
-        : 0;
+    // Badge de la cloche : on ne compte que les alertes que CE rôle a le droit de
+    // voir, sinon le Chef de chantier voyait « 37 » et n'en ouvrait aucune qui le
+    // concerne. Le périmètre est le même que celui d'AlertesController.
+    var typesAlertes = VisibiliteAlertes.TypesVisibles(User);
+    var nbAlertesNonLues = User.Identity?.IsAuthenticated != true
+        ? 0
+        : typesAlertes is null
+            ? await Uow.Alertes.CountAsync(a => !a.EstLue)
+            : await Uow.Alertes.CountAsync(a => !a.EstLue && typesAlertes.Contains(a.Type));
 }
 <!DOCTYPE html>
 <html lang="fr">
@@ -71,7 +77,6 @@
 
             @if (voitChantiers) { <li><a class="@Active("Chantiers")" href="/Chantiers/Index"><i class="fa-solid fa-helmet-safety"></i> <b>1.</b> Chantiers</a></li> }
             @if (voitBanques) { <li><a class="@Active("Banques")" href="/Banques/Index"><i class="fa-solid fa-building-columns"></i> <b>2.</b> Banques</a></li> }
-            @if (isAdmin) { <li><a href="/Banques/Banques" style="padding-left:46px"><i class="fa-solid fa-landmark"></i> Les banques</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionGlobale")" href="/PrevisionGlobale/Index"><i class="fa-solid fa-sitemap"></i> <b>3.</b> Plan du projet</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PrevisionMensuelle")" href="/PrevisionMensuelle/Index"><i class="fa-solid fa-calendar-days"></i> <b>4.</b> Enveloppe du mois</a></li> }
             @if (isAdmin || isRF) { <li><a class="@Active("PlanSemaine")" href="/PlanSemaine/Index"><i class="fa-solid fa-table-list"></i> <b>5.</b> Prévision semaine</a></li> }
