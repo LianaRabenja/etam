@@ -270,6 +270,12 @@ public class BanquesController : Controller
         }
     }
 
+    // Écriture bancaire directe : elle change le solde immédiatement, sans
+    // validation. C'est le geste le plus puissant de l'application, il revient à
+    // l'Administrateur seul. Le Correspondant passe par DemanderTransfert, qui
+    // reste en attente jusqu'à l'accord de l'Administrateur — sans cette
+    // restriction, il lui suffisait d'ouvrir cet écran pour contourner le circuit.
+    [Authorize(Roles = "Administrateur")]
     [HttpGet]
     public async Task<IActionResult> Mouvement(long compteId, CancellationToken ct)
     {
@@ -280,6 +286,7 @@ public class BanquesController : Controller
         return View();
     }
 
+    [Authorize(Roles = "Administrateur")]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Mouvement(long compteId, TypeMouvementBancaire type, decimal montant,
