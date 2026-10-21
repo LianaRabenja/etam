@@ -210,6 +210,37 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.UseRouting();
 app.UseAuthentication();
+
+// ---------- Pas de cache sur les pages d'un utilisateur connecté ----------
+// Sans cela, le navigateur garde la page en mémoire. Après une déconnexion, la
+// touche Précédent la réaffiche telle quelle — avec les chiffres dedans — et on
+// croit que la déconnexion n'a pas marché. Elle a marché : c'est le navigateur
+// qui montre une copie. Sur un poste partagé, le suivant voit les données.
+//
+// Placé APRÈS UseAuthentication : avant, ctx.User serait vide et la condition
+// ne se déclencherait jamais. Les fichiers statiques sont servis plus haut dans
+// le pipeline et n'arrivent jamais ici : le CSS, le JS et les images gardent
+// leur cache d'un an.
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        var estHtml = ctx.Response.ContentType?
+            .StartsWith("text/html", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (ctx.User?.Identity?.IsAuthenticated == true && estHtml)
+        {
+            var entetes = ctx.Response.Headers;
+            entetes["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            entetes["Pragma"] = "no-cache";   // pour les navigateurs anciens
+            entetes["Expires"] = "0";
+        }
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapControllerRoute(

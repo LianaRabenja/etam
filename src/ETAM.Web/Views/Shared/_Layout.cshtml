@@ -5,6 +5,7 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject IUnitOfWork Uow
+@inject IConfiguration Config
 @{
     var ctrl = ViewContext.RouteData.Values["controller"]?.ToString();
     string Active(string c) => string.Equals(ctrl, c, StringComparison.OrdinalIgnoreCase) ? "active" : "";
@@ -109,6 +110,13 @@
                 @if (voitRapports) { <li><a href="/Rapports/Index"><i class="fa-solid fa-chart-pie"></i> Rapports et statistiques</a></li> }
                 @if (isAdmin) { <li><a href="/Audit/Index"><i class="fa-solid fa-clipboard-list"></i> Journal d'audit</a></li> }
                 @if (isAdmin) { <li><a href="/Parametres/Index"><i class="fa-solid fa-gear"></i> Paramètres</a></li> }
+                @* Phase de tests seulement. L'écran répond 404 tant que la variable
+                   Maintenance__ReinitialisationAutorisee n'est pas posée ; le lien est
+                   masqué par la même condition pour ne pas mener à une page morte. *@
+                @if (isAdmin && Config.GetValue<bool>("Maintenance:ReinitialisationAutorisee"))
+                {
+                    <li><a href="/Maintenance/Index" style="color:#fca5a5"><i class="fa-solid fa-trash"></i> Réinitialiser la base</a></li>
+                }
             </ul>
         </details>
     </aside>

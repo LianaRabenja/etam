@@ -1,0 +1,122 @@
+@{
+    ViewData["Title"] = "Réinitialiser la base";
+    var phrase = ViewBag.Phrase as string ?? "EFFACER TOUT";
+}
+
+<div class="mb-3">
+    <h5 class="mb-0">Réinitialiser la base</h5>
+    <small class="text-muted">
+        Phase de tests. Cet écran disparaît dès que la variable
+        <code>Maintenance__ReinitialisationAutorisee</code> est retirée.
+    </small>
+</div>
+
+@* Ce qui sera effacé, chiffré. Un compteur devant les yeux vaut mieux qu'un
+   avertissement en prose : on ne clique pas sur « effacer 412 mouvements »
+   par distraction. *@
+<div class="etam-card p-4 mb-3">
+    <h6 class="mb-3">Ce qui sera effacé</h6>
+    <div class="row g-3 text-center">
+        <div class="col-6 col-md-3">
+            <div class="py-3 rounded" style="background:#fef2f2">
+                <div class="text-muted small">Chantiers</div>
+                <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">@ViewBag.NbChantiers</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="py-3 rounded" style="background:#fef2f2">
+                <div class="text-muted small">Prévisions</div>
+                <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">@ViewBag.NbPrevisions</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="py-3 rounded" style="background:#fef2f2">
+                <div class="text-muted small">Comptes bancaires</div>
+                <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">@ViewBag.NbComptes</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="py-3 rounded" style="background:#fef2f2">
+                <div class="text-muted small">Mouvements</div>
+                <div class="fw-bold" style="font-size:1.5rem;color:#b91c1c">@ViewBag.NbMouvements</div>
+            </div>
+        </div>
+    </div>
+    <p class="text-muted small mb-0 mt-3">
+        @ViewBag.NbTables tables seront vidées, et les numéros repartiront à 1 :
+        votre prochain chantier portera l'identifiant 1.
+    </p>
+</div>
+
+<div class="etam-card p-4 mb-3">
+    <h6 class="mb-3">Ce qui sera conservé</h6>
+    <div class="py-3 rounded text-center" style="background:#f0fdf4;max-width:260px">
+        <div class="text-muted small">Comptes utilisateurs</div>
+        <div class="fw-bold" style="font-size:1.5rem;color:#047857">@ViewBag.NbUtilisateurs</div>
+    </div>
+    <p class="text-muted small mb-0 mt-3">
+        Les comptes, leurs rôles et leurs mots de passe restent intacts. En revanche
+        ils ne seront plus rattachés à un chantier : il faudra les réaffecter depuis
+        l'écran Utilisateurs.
+    </p>
+</div>
+
+<div class="etam-card p-4" style="border:2px solid #dc2626">
+    <h6 class="text-danger mb-3">
+        <i class="fa-solid fa-triangle-exclamation me-1"></i> Zone dangereuse
+    </h6>
+    <p class="small mb-3">
+        Cette opération est <strong>définitive</strong>. Il n'y a pas d'annulation,
+        pas de corbeille, pas de retour en arrière. La seule façon de récupérer les
+        données est une sauvegarde faite <em>avant</em>.
+    </p>
+
+    <form asp-action="Reinitialiser" method="post" id="formReset">
+        @Html.AntiForgeryToken()
+
+        <div class="row g-3" style="max-width:640px">
+            <div class="col-12">
+                <label class="form-label small">
+                    Recopiez <code>@phrase</code> pour confirmer
+                </label>
+                <input name="confirmation" id="inConfirmation" class="form-control"
+                       autocomplete="off" placeholder="@phrase" />
+            </div>
+            <div class="col-12">
+                <label class="form-label small">Votre mot de passe</label>
+                <input name="motDePasse" type="password" class="form-control"
+                       autocomplete="current-password" />
+            </div>
+            <div class="col-12">
+                <button type="submit" id="btnReset" class="btn btn-danger" disabled>
+                    <i class="fa-solid fa-trash me-1"></i> Effacer toutes les données
+                </button>
+                <a asp-controller="Home" asp-action="Index" class="btn btn-light">Annuler</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+  (function(){
+    // Le bouton reste inerte tant que la phrase n'est pas exacte. La casse
+    // compte : « effacer tout » ne déverrouille rien.
+    var phrase = @Html.Raw(Json.Serialize(phrase));
+    var champ  = document.getElementById('inConfirmation');
+    var bouton = document.getElementById('btnReset');
+
+    champ.addEventListener('input', function(){
+      bouton.disabled = champ.value.trim() !== phrase;
+    });
+
+    // Dernière barrière avant l'envoi.
+    document.getElementById('formReset').addEventListener('submit', function(e){
+      if (!confirm('Dernière confirmation.\n\nToutes les données seront effacées ' +
+                   'définitivement. Avez-vous fait une sauvegarde ?')) {
+        e.preventDefault();
+      }
+    });
+  })();
+</script>
+}
