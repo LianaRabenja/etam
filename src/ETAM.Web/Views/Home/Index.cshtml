@@ -2,13 +2,16 @@
 @{ ViewData["Title"] = "Tableau de bord"; }
 
 <div class="kpi-grid mb-4">
-    <div class="kpi">
-        <div class="kpi-icon bg-blue"><i class="fa-solid fa-wallet"></i></div>
-        <div class="kpi-label">Budget Comptes restant</div>
-        <div class="kpi-value">@Model.BudgetCompteRestant.ToString("N0") Ar</div>
-        <div class="etam-progress"><span style="width:@Model.BudgetCompteConsommePct%"></span></div>
-        <div class="kpi-sub">@Model.BudgetCompteConsommePct% consommé</div>
-    </div>
+@*
+    La tuile « Budget Comptes restant » a été retirée du tableau de bord.
+
+    Depuis que toutes les lignes d'une prévision s'imputent sur le budget Matériel,
+    plus rien dans le circuit du chantier n'alimente ni ne consomme le Budget
+    Comptes : la tuile affichait un chiffre figé, parfois négatif, que personne ne
+    pouvait faire bouger — et le premier réflexe était de croire à une erreur.
+
+    Le budget du bureau reste consultable dans le menu « Budget du bureau ».
+*@
     <div class="kpi">
         <div class="kpi-icon bg-green"><i class="fa-solid fa-boxes-stacked"></i></div>
         <div class="kpi-label">Budget Matériel restant</div>
